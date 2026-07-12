@@ -1,7 +1,9 @@
-# Build outputs — go to Google Drive, not git
+# Build outputs — generated on each render, not committed
 out/
 hyperframes/**/*.mp4
 hyperframes/**/*.srt
+hyperframes/**/preview.html
+hyperframes/**/thumbnail.jpg
 
 # Intermediate / test files
 hyperframes/test/frame-check.png
