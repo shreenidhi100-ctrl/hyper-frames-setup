@@ -1,0 +1,26 @@
+# Build outputs — generated on each render, not committed
+out/
+hyperframes/**/*.mp4
+hyperframes/**/*.srt
+hyperframes/**/preview.html
+hyperframes/**/thumbnail.jpg
+
+# Intermediate / test files
+hyperframes/test/frame-check.png
+hyperframes/test/*.mp4
+*.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Source PDFs — too large for git, stored in Google Drive
+source/*.pdf
+
+# Machine-specific Claude Code settings (has local paths)
+.claude/settings.local.json
+
+# OS
+.DS_Store

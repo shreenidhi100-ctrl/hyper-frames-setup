@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  html,body{margin:0;padding:0;background:#000;} canvas{display:block;}
+</style></head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=1280,H=720;
+const PAPER='#FBF4E6',INK='#22283B',SOFT='#5B5F73',TEALD='#136059';
+const TEAL=['#1F8A82','#2AA79E','#4FBDB3','#79CFC6','#A3E0D9'];
+const GOLD=['#D9A22C','#E2B24F','#EAC271','#F1D294','#F7E2B7'];
+const CORAL=['#E2572B','#E87A55','#EE9C7F','#F3BEA9','#F8E0D4'];
+const sh=(p,i)=>p[((i%p.length)+p.length)%p.length];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const easeOutBack=t=>{t=clamp(t,0,1);const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);};
+const easeOut=t=>{t=clamp(t,0,1);return 1-Math.pow(1-t,3);};
+const popAt=(t,s,d=0.45)=> t<s?0:easeOutBack((t-s)/d);
+
+/* Kannada-capable font stacks (FreeSerif ships in the render container) */
+const F_HEAD = '"FreeSerif", "Noto Serif Kannada", serif';
+const F_BODY = '"FreeSerif", "Noto Sans Kannada", sans-serif';
+const F_MONO = '"FreeSerif", monospace'; /* captions contain Kannada words */
+
+function timeline(G){ return {G, R:G+3.0, B:G+4.0, DUR:G+9.5}; }
+
+/* narration-driven timing: phase times derive from how long each line
+   takes to SPEAK (Kannada ≈ 5.2 base-chars/sec), so cues are never
+   too fast by construction. vizReady = when the build animation ends. */
+const GUESS_DEFAULT='ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಊಹಿಸಿ ನೋಡಿ!';
+function need(s){
+  const base=s.replace(/[\u0CBE-\u0CCD\u0CD5\u0CD6\u200C\u200D]/g,'');
+  return base.length/5.2+0.5;
+}
+function autoTL(n, vizReady, guessText=GUESS_DEFAULT){
+  const qEnd=0.4+need(n.q);
+  const hintEnd=qEnd+0.2+need(n.hint);
+  const G=Math.max(vizReady, hintEnd+0.4);
+  const R=G+Math.max(3.0, need(guessText)+0.6);
+  const B=R+1.0;
+  const ansEnd=R+0.3+need(n.ans);
+  const DUR=Math.max(B+5.0, ansEnd+0.8);
+  return {G,R,B,DUR, narr:[
+    {at:0.4, end:qEnd, text:n.q},
+    {at:qEnd+0.2, end:hintEnd, text:n.hint},
+    {at:G, end:R-0.2, text:guessText},
+    {at:R+0.3, end:ansEnd, text:n.ans}
+  ]};
+}
+
+function bg(){
+  ctx.fillStyle=PAPER; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#DFD3B4';
+  for(let x=20;x<W;x+=34)for(let y=20;y<H;y+=34){ctx.beginPath();ctx.arc(x,y,1.6,0,7);ctx.fill();}
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function tag(text,color){
+  ctx.font=`700 22px ${F_BODY}`;
+  const w=ctx.measureText(text).width+28;
+  ctx.fillStyle=color; roundRect(60,38,w,40,10); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(text,74,59);
+}
+function question(text,t){
+  const a=easeOut((t-0.3)/0.6); if(a<=0)return;
+  ctx.globalAlpha=a; ctx.fillStyle=INK; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.font=`700 40px ${F_HEAD}`;
+  ctx.fillText(text,W/2,108-(1-a)*14);
+  ctx.globalAlpha=1;
+}
+function hint(text,t){
+  const a=easeOut((t-2.2)/0.6); if(a<=0)return;
+  ctx.globalAlpha=a; ctx.fillStyle=SOFT; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.font=`600 27px ${F_BODY}`;
+  ctx.fillText(text,W/2,172);
+  ctx.globalAlpha=1;
+}
+function guessPrompt(t,G,R){
+  if(t<G||t>R)return;
+  const a=easeOut((t-G)/0.5), pulse=1+0.05*Math.sin((t-G)*4.2);
+  ctx.save(); ctx.globalAlpha=a; ctx.translate(W/2,632); ctx.scale(pulse,pulse);
+  ctx.fillStyle=INK; roundRect(-300,-34,600,68,34); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(-248,0,22,0,7); ctx.fill();
+  ctx.fillStyle=INK; ctx.font=`700 30px ${F_HEAD}`; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('?',-248,2);
+  ctx.fillStyle='#fff'; ctx.font=`700 29px ${F_BODY}`; ctx.textAlign='left';
+  ctx.fillText('ಮುಂದೆ ಏನು? ಊಹಿಸಿ ನೋಡಿ!',-208,1);
+  ctx.restore(); ctx.globalAlpha=1;
+}
+function wrapText(text,x,y,maxW,lh,align='left',baseline='middle'){
+  ctx.textAlign=align; ctx.textBaseline=baseline;
+  const words=text.split(' '); const lines=[]; let line='';
+  for(const w of words){const test=line?line+' '+w:w;
+    if(ctx.measureText(test).width>maxW&&line){lines.push(line);line=w;}else line=test;}
+  lines.push(line);
+  const totalH=(lines.length-1)*lh;
+  lines.forEach((l,i)=>ctx.fillText(l,x,y-(baseline==='middle'?totalH/2:0)+i*lh));
+}
+function answerBanner(t,B,num,sentence,color){
+  const a=easeOut((t-B)/0.6); if(a<=0)return;
+  const bh=136,y=H-(bh+22)*a;
+  ctx.globalAlpha=Math.min(1,a*1.2);
+  ctx.fillStyle='#fff'; roundRect(70,y,W-140,bh,20); ctx.fill();
+  ctx.lineWidth=3; ctx.strokeStyle=INK; roundRect(70,y,W-140,bh,20); ctx.stroke();
+  ctx.fillStyle=color; ctx.fillRect(70,y,10,bh);
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillStyle=color; ctx.font=`700 50px ${F_HEAD}`;
+  const numW=num?ctx.measureText(num).width:0;
+  if(num)ctx.fillText(num,112,y+bh/2);
+  ctx.fillStyle=INK; ctx.font=`600 27px ${F_BODY}`;
+  wrapText(sentence,112+numW+(num?26:0),y+bh/2,W-280-numW,36);
+  ctx.globalAlpha=1;
+}
+function dot(x,y,r,color,scale,label){
+  if(scale<=0)return;
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+  if(label!==undefined){ctx.fillStyle='#fff';ctx.font=`700 ${Math.round(r*0.85)}px Menlo, monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,0,1);}
+  ctx.restore();
+}
+function ghostDot(x,y,r,t){
+  const pulse=1+0.06*Math.sin(t*3.5);
+  ctx.save(); ctx.translate(x,y); ctx.scale(pulse,pulse);
+  ctx.setLineDash([6,5]); ctx.strokeStyle='#BBAE8C'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#BBAE8C'; ctx.font=`700 ${Math.round(r*0.9)}px Menlo, monospace`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('?',0,1);
+  ctx.restore();
+}
+function mathStep(text,t,start,x,y,color){
+  const a=easeOut((t-start)/0.5); if(a<=0)return;
+  ctx.globalAlpha=a; ctx.fillStyle=color||TEALD;
+  ctx.font=`700 34px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(text,x,y); ctx.globalAlpha=1;
+}
+function polyPath(cx,cy,r,sides,rot=-Math.PI/2){
+  ctx.beginPath();
+  for(let i=0;i<sides;i++){const a=rot+Math.PI*2*i/sides;
+    const x=cx+r*Math.cos(a),y=cy+r*Math.sin(a); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+  ctx.closePath();
+}
+
+/* ================================ SCENES ================================ */
+const SCENES=[];
+
+/* --- title --- */
+SCENES.push({dur:13.5, narr:[
+  {at:0.4, end:7.3, text:'ಗಣಿತದಲ್ಲಿ ವಿನ್ಯಾಸಗಳು — ಆರನೇ ತರಗತಿ, ಅಧ್ಯಾಯ ಒಂದು.'},
+  {at:7.5, end:13.0, text:'ಚಿತ್ರ ನೋಡಿ, ಊಹಿಸಿ, ನಂತರ ಉತ್ತರ ತಿಳಿಯಿರಿ.'}
+], draw(t){
+  ctx.fillStyle=TEALD; ctx.font=`700 26px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.globalAlpha=easeOut(t/0.6); ctx.fillText('6ನೇ ತರಗತಿ · ಗಣಿತ ಪ್ರಕಾಶ · ಅಧ್ಯಾಯ 1',W/2,188);
+  ctx.globalAlpha=easeOut((t-0.5)/0.6); ctx.fillStyle=INK; ctx.font=`700 80px ${F_HEAD}`;
+  ctx.fillText('ಗಣಿತದಲ್ಲಿ ವಿನ್ಯಾಸಗಳು',W/2,248);
+  ctx.globalAlpha=easeOut((t-1.2)/0.6); ctx.fillStyle=SOFT; ctx.font=`600 29px ${F_BODY}`;
+  ctx.fillText('ಚಿತ್ರ ನೋಡಿ · ಊಹಿಸಿ · ಉತ್ತರ ತಿಳಿಯಿರಿ',W/2,392);
+  ctx.globalAlpha=1;
+  const shapes=[[TEAL[0],3],[GOLD[0],4],[CORAL[0],5],[TEAL[1],6]];
+  shapes.forEach((s,i)=>{const sc=popAt(t,2.0+i*0.35); if(sc<=0)return;
+    ctx.save(); ctx.translate(W/2-180+i*120,530); ctx.scale(sc,sc);
+    ctx.fillStyle=s[0]; polyPath(0,0,40,s[1]); ctx.fill(); ctx.restore();});
+}});
+
+/* --- factory: number sequences --- */
+function seqScene(tagText,qText,hintText,values,jump,nextVal,pal,arith,ansNum,ansSentence,narrQ,narrHint,narrAns){
+  const TL=autoTL({q:narrQ,hint:narrHint,ans:narrAns}, 3.4+values.length*0.75+1.2);
+  return {dur:TL.DUR, tag:tagText, tagColor:sh(pal,0),
+    narr:TL.narr,
+    draw(t){
+    question(qText,t); hint(hintText,t);
+    const n=values.length,r=44,gap=118,total=(n+1)*gap;
+    const x0=W/2-total/2+gap/2,y=372;
+    values.forEach((v,i)=>{
+      const s=3.4+i*0.75;
+      dot(x0+i*gap,y,r,sh(pal,i),popAt(t,s),v);
+      if(i>0&&jump&&t>s+0.35){
+        ctx.fillStyle=SOFT; ctx.font='700 22px Menlo, monospace';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText('+'+jump,x0+i*gap-gap/2,y-r-14);
+      }
+    });
+    const gx=x0+n*gap;
+    if(t<TL.R) ghostDot(gx,y,r,t);
+    else{
+      dot(gx,y,r,sh(pal,n),popAt(t,TL.R),nextVal);
+      if(jump&&t>TL.R+0.3){
+        ctx.fillStyle=TEALD; ctx.font='700 22px Menlo, monospace';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText('+'+jump,gx-gap/2,y-r-14);
+      }
+      mathStep(arith,t,TL.R+0.4,W/2,455,sh(pal,0));
+    }
+    guessPrompt(t,TL.G,TL.R);
+    answerBanner(t,TL.B,ansNum,ansSentence,sh(pal,0));
+  }};
+}
+
+SCENES.push(seqScene('ಕೋಷ್ಟಕ 1 · ಎಣಿಕೆ ಸಂಖ್ಯೆಗಳು',
+  'ಎಣಿಕೆ ಸಂಖ್ಯೆಗಳು: 1, 2, 3, 4, 5 … ಮುಂದೆ ಯಾವುದು?',
+  'ಇವು ನಾವು ವಸ್ತುಗಳನ್ನು ಒಂದೊಂದಾಗಿ ಎಣಿಸುವಾಗ ಹೇಳುವ ಸಂಖ್ಯೆಗಳು.',
+  [1,2,3,4,5],1,6,TEAL,'5 + 1 = 6','6',
+  'ಎಣಿಸುವಾಗ ಪ್ರತಿ ಬಾರಿ 1 ಸೇರಿಸುತ್ತೇವೆ. 5 ರ ನಂತರ 6 ಬರುತ್ತದೆ.',
+  'ಎಣಿಕೆ ಸಂಖ್ಯೆಗಳು: ಒಂದು, ಎರಡು, ಮೂರು, ನಾಲ್ಕು, ಐದು… ಮುಂದೆ ಯಾವ ಸಂಖ್ಯೆ ಬರುತ್ತದೆ?',
+  'ಇವು ನಾವು ವಸ್ತುಗಳನ್ನು ಒಂದೊಂದಾಗಿ ಎಣಿಸುವಾಗ ಹೇಳುವ ಸಂಖ್ಯೆಗಳು. ಪ್ರತಿ ವೃತ್ತದಲ್ಲಿ ಮುಂದಿನ ಸಂಖ್ಯೆ ಇದೆ ನೋಡಿ.',
+  'ಉತ್ತರ ಆರು! ಎಣಿಸುವಾಗ ನಾವು ಪ್ರತಿ ಬಾರಿ ಒಂದನ್ನು ಸೇರಿಸುತ್ತೇವೆ. ಐದು ಮತ್ತು ಒಂದು, ಆರು.'));
+
+SCENES.push(seqScene('ಕೋಷ್ಟಕ 1 · ಬೆಸ ಸಂಖ್ಯೆಗಳು',
+  'ಬೆಸ ಸಂಖ್ಯೆಗಳು: 1, 3, 5, 7, 9 … ಮುಂದೆ ಯಾವುದು?',
+  'ವೃತ್ತಗಳ ನಡುವಿನ ಜಿಗಿತ ನೋಡಿ — ಪ್ರತಿ ಜಿಗಿತವೂ ಒಂದೇ ಅಳತೆ.',
+  [1,3,5,7,9],2,11,CORAL,'9 + 2 = 11','11',
+  'ಬೆಸ ಸಂಖ್ಯೆಗಳು ಪ್ರತಿ ಬಾರಿ 2 ಜಿಗಿಯುತ್ತವೆ. 9 + 2 = 11.',
+  'ಬೆಸ ಸಂಖ್ಯೆಗಳು: ಒಂದು, ಮೂರು, ಐದು, ಏಳು, ಒಂಬತ್ತು… ಮುಂದೆ ಯಾವುದು?',
+  'ವೃತ್ತಗಳ ನಡುವಿನ ಜಿಗಿತವನ್ನು ನೋಡಿ. ಪ್ರತಿ ಜಿಗಿತವೂ ಎರಡು — ಒಂದರಿಂದ ಮೂರು, ಮೂರರಿಂದ ಐದು.',
+  'ಉತ್ತರ ಹನ್ನೊಂದು! ಬೆಸ ಸಂಖ್ಯೆಗಳು ಪ್ರತಿ ಬಾರಿ ಎರಡು ಜಿಗಿಯುತ್ತವೆ. ಒಂಬತ್ತು ಮತ್ತು ಎರಡು, ಹನ್ನೊಂದು.'));
+
+SCENES.push(seqScene('ಕೋಷ್ಟಕ 1 · ಸಮ ಸಂಖ್ಯೆಗಳು',
+  'ಸಮ ಸಂಖ್ಯೆಗಳು: 2, 4, 6, 8, 10 … ಮುಂದೆ ಯಾವುದು?',
+  'ಈ ಸಂಖ್ಯೆಗಳನ್ನು ಎರಡು ಸಮ ತಂಡಗಳಾಗಿ ಹಂಚಬಹುದು — ಇವೂ 2 ಜಿಗಿಯುತ್ತವೆ.',
+  [2,4,6,8,10],2,12,GOLD,'10 + 2 = 12','12',
+  'ಸಮ ಸಂಖ್ಯೆಗಳೂ 2 ಜಿಗಿಯುತ್ತವೆ, 2 ರಿಂದ ಆರಂಭ. 10 ರ ನಂತರ 12.',
+  'ಸಮ ಸಂಖ್ಯೆಗಳು: ಎರಡು, ನಾಲ್ಕು, ಆರು, ಎಂಟು, ಹತ್ತು… ಮುಂದೆ ಯಾವುದು?',
+  'ಸಮ ಸಂಖ್ಯೆಗಳನ್ನು ಎರಡು ಸಮ ತಂಡಗಳಾಗಿ ಹಂಚಬಹುದು. ಇವೂ ಪ್ರತಿ ಬಾರಿ ಎರಡು ಜಿಗಿಯುತ್ತವೆ.',
+  'ಉತ್ತರ ಹನ್ನೆರಡು! ಸಮ ಸಂಖ್ಯೆಗಳು ಎರಡರಿಂದ ಆರಂಭವಾಗಿ ಎರಡೆರಡು ಜಿಗಿಯುತ್ತವೆ. ಹತ್ತು ಮತ್ತು ಎರಡು, ಹನ್ನೆರಡು.'));
+
+/* --- triangular numbers --- */
+{
+const TL=autoTL({q:'ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳು: ಒಂದು, ಮೂರು, ಆರು, ಹತ್ತು, ಹದಿನೈದು… ಮುಂದೆ ಯಾವುದು?',hint:'ಚುಕ್ಕೆಗಳಿಂದ ತ್ರಿಭುಜ ಕಟ್ಟೋಣ. ಪ್ರತಿ ಹೊಸ ಸಾಲಿನಲ್ಲಿ ಮೇಲಿನ ಸಾಲಿಗಿಂತ ಒಂದು ಚುಕ್ಕೆ ಹೆಚ್ಚು — ಎರಡು ಸೇರಿಸಿ, ಮೂರು ಸೇರಿಸಿ, ನಾಲ್ಕು ಸೇರಿಸಿ, ಐದು ಸೇರಿಸಿ.',ans:'ಉತ್ತರ ಇಪ್ಪತ್ತೊಂದು! ಮುಂದಿನದು ಆರನೇ ಸಾಲು — ಅದು ಆರು ಚುಕ್ಕೆ ಸೇರಿಸುತ್ತದೆ. ಹದಿನೈದು ಮತ್ತು ಆರು, ಇಪ್ಪತ್ತೊಂದು.'}, 12.0, 'ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಸ್ವಲ್ಪ ಯೋಚಿಸಿ, ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'ಕೋಷ್ಟಕ 1 · ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳು', tagColor:TEAL[0],
+  narr:TL.narr, draw(t){
+  question('ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳು: 1, 3, 6, 10, 15 … ಮುಂದೆ ಯಾವುದು?',t);
+  hint('ಚುಕ್ಕೆಗಳ ತ್ರಿಭುಜ ಕಟ್ಟಿ. ಪ್ರತಿ ಹೊಸ ಸಾಲಿನಲ್ಲಿ ಒಂದು ಚುಕ್ಕೆ ಹೆಚ್ಚು.',t);
+  const r=16,gap=42,topY=252;
+  const rowStart=row=>3.4+(row*(row+1)/2-1)*0.22+row*0.5;
+  for(let row=1;row<=5;row++){
+    const y=topY+(row-1)*38;
+    for(let d=0;d<row;d++){
+      const x=W/2-160-(row-1)*gap/2+d*gap;
+      dot(x,y,r,sh(TEAL,row-1),popAt(t,rowStart(row-1)+d*0.22));
+    }
+  }
+  const sums=[1,3,6,10,15],adds=['','+2','+3','+4','+5'];
+  ctx.font=`700 26px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+  sums.forEach((s,row)=>{
+    if(t>rowStart(row)+(row+1)*0.22+0.3){
+      ctx.fillStyle=SOFT;
+      ctx.fillText(`ಸಾಲು ${row+1}: ${adds[row]?adds[row]+' → ':''}${s}`,W/2+60,topY+row*38);
+    }
+  });
+  if(t>=TL.R) mathStep('15 + 6 = 21',t,TL.R,W/2,470,TEAL[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'21','ಮುಂದಿನ ಸಾಲು 6 — ಅದು 6 ಚುಕ್ಕೆ ಸೇರಿಸುತ್ತದೆ. 15 + 6 = 21.',TEAL[0]);
+}});
+}
+
+/* --- square numbers --- */
+{
+const TL=autoTL({q:'ವರ್ಗ ಸಂಖ್ಯೆಗಳು: ಒಂದು, ನಾಲ್ಕು, ಒಂಬತ್ತು, ಹದಿನಾರು, ಇಪ್ಪತ್ತೈದು… ಮುಂದೆ ಯಾವುದು?',hint:'ಪ್ರತಿ ಸಂಖ್ಯೆಯ ಚುಕ್ಕೆಗಳು ಚೌಕದಲ್ಲಿ ಸರಿಯಾಗಿ ಕೂರುತ್ತವೆ — ಸಾಲುಗಳೂ ಕಂಬಸಾಲುಗಳೂ ಸಮ. ಒಂದು ಒಂದು, ಎರಡು ಎರಡು, ಮೂರು ಮೂರು…',ans:'ಉತ್ತರ ಮೂವತ್ತಾರು! ಆರು ಸಾಲು, ಪ್ರತಿ ಸಾಲಿನಲ್ಲಿ ಆರು ಚುಕ್ಕೆ. ಆರು ಗುಣಿಸು ಆರು, ಮೂವತ್ತಾರು.'}, 11.0, 'ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಸ್ವಲ್ಪ ಯೋಚಿಸಿ, ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'ಕೋಷ್ಟಕ 1 · ವರ್ಗ ಸಂಖ್ಯೆಗಳು', tagColor:TEAL[0],
+  narr:TL.narr, draw(t){
+  question('ವರ್ಗ ಸಂಖ್ಯೆಗಳು: 1, 4, 9, 16, 25 … ಮುಂದೆ ಯಾವುದು?',t);
+  hint('ಪ್ರತಿ ಸಂಖ್ಯೆಯ ಚುಕ್ಕೆಗಳು ಚೌಕದಲ್ಲಿ ಸರಿಯಾಗಿ ಕೂರುತ್ತವೆ.',t);
+  const sizes=[1,2,3,4,5],cell=16,gapC=4,baseY=420,x0=170;
+  let x=x0;
+  sizes.forEach((n,idx)=>{
+    const s=3.4+idx*1.35, sc=popAt(t,s), gw=n*cell+(n-1)*gapC;
+    if(sc>0){
+      ctx.save(); ctx.translate(x+gw/2,baseY-gw/2); ctx.scale(sc,sc); ctx.translate(-gw/2,gw/2);
+      for(let r2=0;r2<n;r2++)for(let c=0;c<n;c++){
+        ctx.fillStyle=sh(TEAL,idx);
+        ctx.fillRect(c*(cell+gapC),-r2*(cell+gapC)-cell,cell,cell);
+      }
+      ctx.restore();
+      ctx.globalAlpha=clamp(sc,0,1);
+      ctx.fillStyle=SOFT; ctx.font='700 23px Menlo, monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText(`${n}×${n}=${n*n}`,x+gw/2,baseY+18); ctx.globalAlpha=1;
+    }
+    x+=gw+66;
+  });
+  if(t>=TL.R) mathStep('6 × 6 = 36',t,TL.R,W/2,500,TEAL[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'36','6 ಸಾಲು × 6 ಚುಕ್ಕೆ = 36. ಇದೇ ಮುಂದಿನ ವರ್ಗ ಸಂಖ್ಯೆ.',TEAL[0]);
+}});
+}
+
+/* --- cube numbers --- */
+{
+const TL=autoTL({q:'ಘನ ಸಂಖ್ಯೆಗಳು: ಒಂದು, ಎಂಟು, ಇಪ್ಪತ್ತೇಳು… ಮುಂದೆ ಯಾವುದು?',hint:'ಈಗ ಚುಕ್ಕೆಗಳು ಗಟ್ಟಿ ಘನಗಳಾಗಿ ಜೋಡಣೆಯಾಗುತ್ತವೆ — ಉದ್ದ, ಅಗಲ, ಎತ್ತರ ಎಲ್ಲವೂ ಒಂದೇ ಅಳತೆ.',ans:'ಉತ್ತರ ಅರವತ್ತನಾಲ್ಕು! ಮುಂದಿನ ಘನ ನಾಲ್ಕು ಉದ್ದ, ನಾಲ್ಕು ಅಗಲ, ನಾಲ್ಕು ಎತ್ತರ. ನಾಲ್ಕು ಗುಣಿಸು ನಾಲ್ಕು ಗುಣಿಸು ನಾಲ್ಕು, ಅರವತ್ತನಾಲ್ಕು.'}, 11.0, 'ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಸ್ವಲ್ಪ ಯೋಚಿಸಿ, ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'ಕೋಷ್ಟಕ 1 · ಘನ ಸಂಖ್ಯೆಗಳು', tagColor:TEAL[0],
+  narr:TL.narr, draw(t){
+  question('ಘನ ಸಂಖ್ಯೆಗಳು: 1, 8, 27 … ಮುಂದೆ ಯಾವುದು?',t);
+  hint('ಚುಕ್ಕೆಗಳು ಘನಗಳಾಗಿ ಜೋಡಣೆ — ಎಲ್ಲ ದಿಕ್ಕಿನಲ್ಲೂ ಒಂದೇ ಅಳತೆ.',t);
+  const cell=26,gapC=3,baseY=460,xs=[330,580,880];
+  [1,2,3].forEach((n,idx)=>{
+    for(let layer=0;layer<n;layer++){
+      const sc=popAt(t,3.4+idx*1.8+layer*0.55); if(sc<=0)continue;
+      const gw=n*cell+(n-1)*gapC, ox=xs[idx]-gw/2+layer*10, oy=baseY-layer*20;
+      ctx.save(); ctx.globalAlpha=clamp(sc,0,1);
+      for(let r2=0;r2<n;r2++)for(let c=0;c<n;c++){
+        ctx.fillStyle=sh(TEAL,idx+layer);
+        ctx.fillRect(ox+c*(cell+gapC),oy-r2*(cell+gapC)-cell,cell,cell);
+      }
+      ctx.restore();
+    }
+    if(t>3.4+idx*1.8+n*0.55+0.3){
+      ctx.fillStyle=SOFT; ctx.font='700 23px Menlo, monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText(`${n}×${n}×${n} = ${n*n*n}`,xs[idx],baseY+26);
+    }
+  });
+  if(t>=TL.R) mathStep('4 × 4 × 4 = 64',t,TL.R,W/2,540,TEAL[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'64','ಮುಂದಿನ ಘನ: 4 ಉದ್ದ, 4 ಅಗಲ, 4 ಎತ್ತರ. 4 × 4 × 4 = 64.',TEAL[0]);
+}});
+}
+
+/* --- odd sums build a square --- */
+{
+const TL=autoTL({q:'ಬೆಸ ಸಂಖ್ಯೆಗಳನ್ನು ಒಂದೊಂದಾಗಿ ಕೂಡೋಣ: ಒಂದು, ಒಂದು ಮತ್ತು ಮೂರು, ಒಂದು ಮೂರು ಐದು… ಏನು ಕಾಣುತ್ತದೆ?',hint:'ಪ್ರತಿ ಹೊಸ ಬೆಸ ಸಂಖ್ಯೆ ಮೂಲೆಯ ಸುತ್ತ ಎಲ್ ಆಕಾರದಲ್ಲಿ ಸುತ್ತುತ್ತದೆ. ಮೊತ್ತ ನೋಡಿ: ಒಂದು, ನಾಲ್ಕು, ಒಂಬತ್ತು, ಹದಿನಾರು, ಇಪ್ಪತ್ತೈದು…',ans:'ಯಾವಾಗಲೂ ಒಂದು ಪೂರ್ಣ ಚೌಕ! ಪ್ರತಿ ಬೆಸ ಸಂಖ್ಯೆ ಒಂದು ಹೊಸ ಪದರ ಸೇರಿಸುತ್ತದೆ — ಮೊತ್ತ ಯಾವಾಗಲೂ ವರ್ಗ ಸಂಖ್ಯೆ. ಕೊನೆಗೆ ಮೂವತ್ತಾರು.'}, 12.5, 'ಯಾವ ಆಕಾರ ಕಾಣುತ್ತಿದೆ? ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'§1.4 · ಬೆಸ ಸಂಖ್ಯೆಗಳ ಮೊತ್ತ', tagColor:GOLD[0],
+  narr:TL.narr, draw(t){
+  question('ಬೆಸ ಸಂಖ್ಯೆಗಳನ್ನು ಕೂಡಿ: 1, 1+3, 1+3+5 … ಏನು ಕಾಣುತ್ತದೆ?',t);
+  hint('ಪ್ರತಿ ಹೊಸ ಬೆಸ ಸಂಖ್ಯೆ L ಆಕಾರದಲ್ಲಿ ಸುತ್ತುತ್ತದೆ — ಆಕಾರ ಗಮನಿಸಿ.',t);
+  const n=6,cell=40,gapC=5,gw=n*cell+(n-1)*gapC,ox=W/2-gw/2-160,oy=232;
+  const adds=[1,3,5,7,9,11];
+  for(let r2=0;r2<n;r2++)for(let c=0;c<n;c++){
+    const layer=Math.max(r2,c), sc=popAt(t,3.4+layer*1.3,0.5);
+    if(sc<=0)continue;
+    ctx.save(); ctx.globalAlpha=clamp(sc,0,1); ctx.fillStyle=sh(TEAL,layer);
+    roundRect(ox+c*(cell+gapC),oy+r2*(cell+gapC),cell,cell,8); ctx.fill(); ctx.restore();
+  }
+  ctx.font='700 26px Menlo, monospace'; ctx.textAlign='left'; ctx.textBaseline='top';
+  let sum=0;
+  adds.forEach((a,layer)=>{
+    sum+=a;
+    if(t>3.4+layer*1.3+0.4){
+      ctx.fillStyle=layer%2?TEALD:SOFT;
+      ctx.fillText(`${adds.slice(0,layer+1).join('+')} = ${sum}`,ox+gw+56,244+layer*42);
+    }
+  });
+  if(t>=TL.R) mathStep('ಯಾವಾಗಲೂ ಪೂರ್ಣ ವರ್ಗ!',t,TL.R,W/2,586,GOLD[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'36','ಪ್ರತಿ ಬೆಸ ಸಂಖ್ಯೆ ಒಂದು L-ಪದರ ಸೇರಿಸುತ್ತದೆ — ಮೊತ್ತ ಯಾವಾಗಲೂ ಪೂರ್ಣ ವರ್ಗ: 1, 4, 9, 16, 25, 36.',GOLD[0]);
+}});
+}
+
+/* --- hexagonal ring numbers --- */
+{
+const TL=autoTL({q:'ಚುಕ್ಕೆಗಳು ಉಂಗುರಗಳಲ್ಲಿ ಬೆಳೆಯುತ್ತವೆ: ಒಂದು, ಏಳು, ಹತ್ತೊಂಬತ್ತು, ಮೂವತ್ತೇಳು… ಮುಂದೆ ಯಾವುದು?',hint:'ನಡುವೆ ಒಂದು ಚುಕ್ಕೆ, ಸುತ್ತ ಷಡ್ಭುಜ ಉಂಗುರಗಳು. ಪ್ರತಿ ಉಂಗುರ ಹಿಂದಿನದಕ್ಕಿಂತ ಆರು ಹೆಚ್ಚು ಸೇರಿಸುತ್ತದೆ.',ans:'ಉತ್ತರ ಅರವತ್ತೊಂದು! ಸೇರ್ಪಡೆಗಳು: ಆರು, ಹನ್ನೆರಡು, ಹದಿನೆಂಟು… ಮುಂದಿನದು ಇಪ್ಪತ್ತನಾಲ್ಕು. ಮೂವತ್ತೇಳು ಮತ್ತು ಇಪ್ಪತ್ತನಾಲ್ಕು, ಅರವತ್ತೊಂದು.'}, 11.0, 'ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಸ್ವಲ್ಪ ಯೋಚಿಸಿ, ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'ಲೆಕ್ಕಾಚಾರ ಮಾಡಿ · ಪ್ರಶ್ನೆ 4', tagColor:GOLD[0],
+  narr:TL.narr, draw(t){
+  question('ಉಂಗುರಗಳಲ್ಲಿ ಚುಕ್ಕೆಗಳು: 1, 7, 19, 37 … ಮುಂದೆ ಯಾವುದು?',t);
+  hint('ನಡುವೆ ಒಂದು ಚುಕ್ಕೆ, ಸುತ್ತ ಉಂಗುರಗಳು. ಪ್ರತಿ ಉಂಗುರದ ಬೆಳವಣಿಗೆ ಗಮನಿಸಿ.',t);
+  const cx=W/2-160,cy=408;
+  const radii=[34,74,114,154],labels=[1,7,19,37],diffs=['','+6','+12','+18'];
+  for(let i=radii.length-1;i>=0;i--){
+    const sc=popAt(t,3.4+i*1.5,0.5); if(sc<=0)continue;
+    ctx.save(); ctx.translate(cx,cy); ctx.scale(sc,sc);
+    ctx.fillStyle=sh(CORAL,radii.length-1-i); polyPath(0,0,radii[i],6,0); ctx.fill(); ctx.restore();
+  }
+  ctx.font=`700 26px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+  labels.forEach((l,i)=>{
+    if(t>3.4+i*1.5+0.4){
+      ctx.fillStyle=SOFT;
+      ctx.fillText(`ಉಂಗುರ ${i+1}: ${diffs[i]?diffs[i]+' → ':''}${l}`,cx+250,290+i*46);
+    }
+  });
+  if(t>=TL.R) mathStep('37 + 24 = 61',t,TL.R,cx+330,480,GOLD[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'61','ಪ್ರತಿ ಉಂಗುರ +6 ಹೆಚ್ಚು: +6, +12, +18 … ಮುಂದಿನದು +24. 37 + 24 = 61.',GOLD[0]);
+}});
+}
+
+/* --- polygons --- */
+{
+const TL=autoTL({q:'ತ್ರಿಭುಜ, ಚೌಕ, ಪಂಚಭುಜ, ಷಡ್ಭುಜ… ಮುಂದಿನ ಆಕೃತಿ ಯಾವುದು?',hint:'ಪ್ರತಿ ಆಕೃತಿಯ ಬಾಹುಗಳನ್ನು ಎಣಿಸಿ: ಮೂರು, ನಾಲ್ಕು, ಐದು, ಆರು…',ans:'ಉತ್ತರ ಸಪ್ತಭುಜ! ಪ್ರತಿ ಆಕೃತಿಗೆ ಹಿಂದಿನದಕ್ಕಿಂತ ಒಂದು ಬಾಹು ಹೆಚ್ಚು — ಮುಂದಿನದಕ್ಕೆ ಏಳು ಬಾಹುಗಳು.'}, 10.5, 'ಮುಂದಿನ ಆಕೃತಿ ಯಾವುದು? ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'ಕೋಷ್ಟಕ 3 · ಆಕೃತಿ ವಿನ್ಯಾಸಗಳು', tagColor:CORAL[0],
+  narr:TL.narr, draw(t){
+  question('ತ್ರಿಭುಜ, ಚೌಕ, ಪಂಚಭುಜ, ಷಡ್ಭುಜ … ಮುಂದಿನ ಆಕೃತಿ?',t);
+  hint('ಪ್ರತಿ ಆಕೃತಿಯ ಬಾಹುಗಳನ್ನು ಎಣಿಸಿ: 3, 4, 5, 6 …',t);
+  const sides=[3,4,5,6],xs=[250,480,710,940],y=392,R=70;
+  sides.forEach((s,i)=>{
+    const sc=popAt(t,3.4+i*1.2); if(sc<=0)return;
+    ctx.save(); ctx.translate(xs[i],y); ctx.scale(sc,sc);
+    ctx.fillStyle=sh(CORAL,i); polyPath(0,0,R,s); ctx.fill(); ctx.restore();
+    ctx.globalAlpha=clamp(sc,0,1);
+    ctx.fillStyle=SOFT; ctx.font=`700 23px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(s+' ಬಾಹು',xs[i],y+R+18); ctx.globalAlpha=1;
+  });
+  if(t>=TL.R){
+    const sc=popAt(t,TL.R,0.55);
+    ctx.save(); ctx.translate(1140,y); ctx.scale(sc,sc);
+    ctx.fillStyle=TEALD; polyPath(0,0,R,7); ctx.fill(); ctx.restore();
+    ctx.fillStyle=TEALD; ctx.font=`700 23px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('7 ಬಾಹು!',1140,y+R+18);
+  }
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'ಸಪ್ತಭುಜ','ಪ್ರತಿ ಆಕೃತಿಗೆ ಒಂದು ಬಾಹು ಹೆಚ್ಚು — ಮುಂದಿನದು 7 ಬಾಹುಗಳ ಸಪ್ತಭುಜ.',CORAL[0]);
+}});
+}
+
+/* --- triangle mosaic --- */
+{
+const TL=autoTL({q:'ಚಿಕ್ಕ ತ್ರಿಭುಜಗಳಿಂದ ದೊಡ್ಡ ತ್ರಿಭುಜ: ಒಂದು, ನಾಲ್ಕು, ಒಂಬತ್ತು, ಹದಿನಾರು… ಮುಂದೆ ಎಷ್ಟು?',hint:'ಪ್ರತಿ ದೊಡ್ಡ ತ್ರಿಭುಜ ತನ್ನ ಬಾಹುವನ್ನು ಇನ್ನೊಮ್ಮೆ ವಿಭಜಿಸುತ್ತದೆ. ಒಳಗಿನ ಚಿಕ್ಕ ತ್ರಿಭುಜಗಳನ್ನು ಎಣಿಸಿ.',ans:'ಉತ್ತರ ಇಪ್ಪತ್ತೈದು! ಐದು ಸಾಲು ಚಿಕ್ಕ ತ್ರಿಭುಜ — ಐದು ಗುಣಿಸು ಐದು, ಇಪ್ಪತ್ತೈದು. ಇವು ವರ್ಗ ಸಂಖ್ಯೆಗಳೇ!'}, 11.5, 'ಮುಂದಿನ ದೊಡ್ಡ ತ್ರಿಭುಜದಲ್ಲಿ ಎಷ್ಟು? ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'ಕಂಡುಹಿಡಿಯಿರಿ · ಆಕೃತಿಗಳು', tagColor:CORAL[0],
+  narr:TL.narr, draw(t){
+  question('ಚಿಕ್ಕ ತ್ರಿಭುಜಗಳಿಂದ ದೊಡ್ಡ ತ್ರಿಭುಜ: 1, 4, 9, 16 … ಮುಂದೆ ಎಷ್ಟು?',t);
+  hint('ಪ್ರತಿ ದೊಡ್ಡ ತ್ರಿಭುಜ ಬಾಹುವನ್ನು ಇನ್ನೊಮ್ಮೆ ವಿಭಜಿಸುತ್ತದೆ. ಚಿಕ್ಕವನ್ನು ಎಣಿಸಿ.',t);
+  function mosaic(cx,baseY,rows,unit,tStart,palMain){
+    let k=0;
+    for(let r2=0;r2<rows;r2++){
+      const y=baseY-(rows-1-r2)*unit*0.87, count=2*r2+1;
+      for(let i=0;i<count;i++){
+        const up=i%2===0, px=cx+(i-(count-1)/2)*(unit/2);
+        const sc=popAt(t,tStart+k*0.09,0.35); k++;
+        if(sc<=0)continue;
+        ctx.save(); ctx.globalAlpha=clamp(sc,0,1);
+        ctx.fillStyle=up?sh(palMain,r2):sh(GOLD,r2);
+        ctx.beginPath();
+        if(up){ctx.moveTo(px,y-unit*0.87);ctx.lineTo(px-unit/2,y);ctx.lineTo(px+unit/2,y);}
+        else{ctx.moveTo(px,y);ctx.lineTo(px-unit/2,y-unit*0.87);ctx.lineTo(px+unit/2,y-unit*0.87);}
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+    }
+  }
+  const configs=[[1,180,3.4],[2,370,4.6],[3,590,6.0],[4,850,7.8]];
+  configs.forEach(([rows,cx,ts])=>mosaic(cx,430,rows,46,ts,TEAL));
+  const labels=[1,4,9,16];
+  ctx.font='700 24px Menlo, monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
+  configs.forEach(([rows,cx,ts],i)=>{
+    if(t>ts+rows*rows*0.09+0.3){ctx.fillStyle=SOFT;ctx.fillText(`${rows}×${rows}=${labels[i]}`,cx,458);}
+  });
+  if(t>=TL.R){
+    mosaic(1120,430,5,46,TL.R,CORAL);
+    if(t>TL.R+5*5*0.09+0.2){ctx.fillStyle=CORAL[0];ctx.font='700 24px Menlo, monospace';ctx.fillText('5×5=25',1120,458);}
+  }
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'25','ಇನ್ನೊಂದು ವಿಭಜನೆ = 5 ಸಾಲು — 5 × 5 = 25. ಇವು ವರ್ಗ ಸಂಖ್ಯೆಗಳೇ!',CORAL[0]);
+}});
+}
+
+/* --- complete graphs --- */
+{
+const TL=autoTL({q:'ಪ್ರತಿ ಜೋಡಿ ಬಿಂದುಗಳನ್ನು ಗೆರೆಯಿಂದ ಸೇರಿಸಿ. ಗೆರೆಗಳ ಎಣಿಕೆ: ಒಂದು, ಮೂರು, ಆರು, ಹತ್ತು… ಮುಂದೆ ಎಷ್ಟು?',hint:'ಬಿಂದುಗಳನ್ನು ವೃತ್ತದಲ್ಲಿ ಇಡಿ, ಪ್ರತಿ ಜೋಡಿಯ ನಡುವೆ ಗೆರೆ ಎಳೆಯಿರಿ, ಗೆರೆಗಳನ್ನು ಎಣಿಸಿ.',ans:'ಉತ್ತರ ಹದಿನೈದು! ಗೆರೆಗಳ ಎಣಿಕೆ ಒಂದು, ಮೂರು, ಆರು, ಹತ್ತು, ಹದಿನೈದು — ನಮ್ಮ ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳೇ, ಆಕೃತಿ ಒಗಟಿನೊಳಗೆ ಅಡಗಿವೆ!'}, 11.5, 'ಆರು ಬಿಂದುಗಳಿಗೆ ಎಷ್ಟು ಗೆರೆ? ಊಹಿಸಿ ನೋಡಿ!');
+SCENES.push({dur:TL.DUR, tag:'§1.6 · ಪೂರ್ಣ ನಕ್ಷೆಗಳು', tagColor:CORAL[0],
+  narr:TL.narr, draw(t){
+  question('ಪ್ರತಿ ಜೋಡಿ ಬಿಂದು ಸೇರಿಸಿ: K2, K3, K4, K5 … ಮುಂದೆ ಎಷ್ಟು ಗೆರೆ?',t);
+  hint('ಬಿಂದುಗಳ ಪ್ರತಿ ಜೋಡಿಯ ನಡುವೆ ಗೆರೆ ಎಳೆದು ಎಣಿಸಿ.',t);
+  const xs=[220,440,660,880,1100],y=392,R=66,counts=[1,3,6,10,15];
+  [2,3,4,5].forEach((n,idx)=>{
+    const sc=popAt(t,3.4+idx*1.4,0.5); if(sc<=0)return;
+    const pts=[];
+    for(let i=0;i<n;i++){const a=Math.PI*2*i/n-Math.PI/2;
+      pts.push([xs[idx]+R*Math.cos(a)*sc,y+R*Math.sin(a)*sc]);}
+    ctx.strokeStyle=sh(TEAL,idx); ctx.lineWidth=2.4; ctx.globalAlpha=clamp(sc,0,1);
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+      ctx.beginPath();ctx.moveTo(pts[i][0],pts[i][1]);ctx.lineTo(pts[j][0],pts[j][1]);ctx.stroke();}
+    pts.forEach(p=>{ctx.fillStyle=sh(GOLD,idx);ctx.beginPath();ctx.arc(p[0],p[1],7,0,7);ctx.fill();});
+    ctx.fillStyle=SOFT; ctx.font=`700 23px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(`${n} ಬಿಂದು · ${counts[idx]} ಗೆರೆ`,xs[idx],y+R+22); ctx.globalAlpha=1;
+  });
+  if(t>=TL.R){
+    const n=6, sc=popAt(t,TL.R,0.55), pts=[];
+    for(let i=0;i<n;i++){const a=Math.PI*2*i/n-Math.PI/2;
+      pts.push([xs[4]+R*Math.cos(a)*sc,y+R*Math.sin(a)*sc]);}
+    ctx.strokeStyle=TEALD; ctx.lineWidth=2.4; ctx.globalAlpha=clamp(sc,0,1);
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+      ctx.beginPath();ctx.moveTo(pts[i][0],pts[i][1]);ctx.lineTo(pts[j][0],pts[j][1]);ctx.stroke();}
+    pts.forEach(p=>{ctx.fillStyle=sh(GOLD,4);ctx.beginPath();ctx.arc(p[0],p[1],7,0,7);ctx.fill();});
+    ctx.fillStyle=TEALD; ctx.font=`700 23px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('6 ಬಿಂದು · 15 ಗೆರೆ',xs[4],y+R+22); ctx.globalAlpha=1;
+  }
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'15','ಗೆರೆಗಳ ಎಣಿಕೆ 1, 3, 6, 10, 15 — ನಮ್ಮ ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳೇ!',CORAL[0]);
+}});
+}
+
+/* --- outro --- */
+SCENES.push({dur:16.0, narr:[
+  {at:0.4, end:8.6, text:'ವಿನ್ಯಾಸಗಳು ಎಲ್ಲೆಲ್ಲೂ ಇವೆ. ಸಂಖ್ಯೆಗಳು ಆಕೃತಿಗಳನ್ನು ಮಾಡುತ್ತವೆ.'},
+  {at:8.8, end:15.5, text:'ಅಧ್ಯಾಯ ಒಂದು ಇಲ್ಲಿಗೆ ಮುಗಿಯಿತು. ಚೆನ್ನಾಗಿ ಕಲಿತಿರಿ!'}
+], draw(t){
+  ctx.globalAlpha=easeOut(t/0.5);
+  ctx.fillStyle=INK; ctx.font=`700 62px ${F_HEAD}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText('ವಿನ್ಯಾಸಗಳು ಎಲ್ಲೆಲ್ಲೂ ಇವೆ.',W/2,225);
+  ctx.globalAlpha=easeOut((t-0.6)/0.5);
+  ctx.fillStyle=SOFT; ctx.font=`600 29px ${F_BODY}`;
+  ctx.fillText('ಸಂಖ್ಯೆಗಳು ಆಕೃತಿಗಳನ್ನು ಮಾಡುತ್ತವೆ, ಆಕೃತಿಗಳು ಸಂಖ್ಯೆಗಳನ್ನು.',W/2,330);
+  ctx.globalAlpha=easeOut((t-1.2)/0.5);
+  ctx.fillText('ಅಧ್ಯಾಯ 1 · ಗಣಿತದಲ್ಲಿ ವಿನ್ಯಾಸಗಳು · §1.1–1.6',W/2,382);
+  ctx.globalAlpha=1;
+  const shapes=[[TEAL[0],3],[GOLD[0],4],[CORAL[0],5],[TEAL[1],6],[GOLD[1],7]];
+  shapes.forEach((s,i)=>{const sc=popAt(t,1.8+i*0.3); if(sc<=0)return;
+    ctx.save(); ctx.translate(W/2-240+i*120,510); ctx.scale(sc,sc);
+    ctx.fillStyle=s[0]; polyPath(0,0,38,s[1]); ctx.fill(); ctx.restore();});
+}});
+
+/* ================================ driver ================================ */
+const OFFSETS=[]; let acc=0;
+for(const s of SCENES){OFFSETS.push(acc); acc+=s.dur;}
+const TOTAL=acc;
+window.totalDuration=()=>TOTAL;
+window.sceneSchedule=()=>SCENES.map((s,i)=>({start:OFFSETS[i],dur:s.dur}));
+window.chimeTimes=()=>{
+  const times=[];
+  SCENES.forEach((s,i)=>{
+    if(!s.narr) return;
+    // reveal chime = start of the answer narration line (index 3 for question scenes)
+    const ans=s.narr.find(n=>n.text.startsWith('ಉತ್ತರ')||n.text.startsWith('ಯಾವಾಗಲೂ'));
+    if(ans) times.push(+(OFFSETS[i]+ans.at-0.3).toFixed(2));
+  });
+  return times;
+};
+/* narration lines with absolute times — the single source of truth for the SRT */
+window.narration=()=>{
+  const out=[];
+  SCENES.forEach((s,i)=>{
+    (s.narr||[]).forEach(n=>{
+      out.push({start:+(OFFSETS[i]+n.at).toFixed(2), end:+(OFFSETS[i]+Math.min(n.end,s.dur)).toFixed(2), text:n.text});
+    });
+  });
+  return out;
+};
+window.renderFrame=function(t){
+  bg();
+  let idx=SCENES.length-1;
+  for(let i=0;i<SCENES.length;i++){ if(t<OFFSETS[i]+SCENES[i].dur){idx=i;break;} }
+  const s=SCENES[idx], local=t-OFFSETS[idx];
+  if(s.tag) tag(s.tag,s.tagColor);
+  s.draw(local);
+  if(idx>0&&local<0.35){ctx.fillStyle=PAPER;ctx.globalAlpha=1-local/0.35;ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;}
+  return idx;
+};
+renderFrame(0);
+</script>
+</body></html>
