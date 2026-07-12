@@ -172,9 +172,15 @@ def main():
     final_mp4 = video_dir / f"{video_id}-final.mp4"
     step_mux(raw_mp4, srt_path, voice_wav, final_mp4)
 
-    print("done:")
-    print(f"  video : {final_mp4}")
-    print(f"  subs  : {srt_path}")
+    # ── preview artifact ─────────────────────────────────────────────────────
+    print("── preview ──────────────────────────────────────")
+    from preview import generate as gen_preview
+    preview_html = gen_preview(video_dir)
+
+    print("\ndone:")
+    print(f"  video   : {final_mp4}")
+    print(f"  subs    : {srt_path}")
+    print(f"  preview : {preview_html}  ← publish as Artifact")
     if args.tts:
         print(f"  voice : baked in  (lang={args.lang})")
 
