@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  /* HyperFrames resolves these from ~/.cache/hyperframes/fonts/ at compile time */
+  @font-face { font-family: 'Noto Sans Kannada'; font-weight: 400; src: local('Noto Sans Kannada'); }
+  @font-face { font-family: 'Noto Sans Kannada'; font-weight: 700; src: local('Noto Sans Kannada Bold'); }
+  @font-face { font-family: 'Noto Serif Kannada'; font-weight: 400; src: local('Noto Serif Kannada'); }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1280px;
+    height: 720px;
+    background: #1a1a2e;
+    font-family: 'Noto Sans Kannada', 'Noto Serif Kannada', serif;
+    overflow: hidden;
+  }
+
+  .stage {
+    width: 1280px;
+    height: 720px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+  }
+
+  .chapter-badge {
+    position: absolute;
+    top: 24px; right: 24px;
+    background: #e94560;
+    color: white;
+    font-size: 20px;
+    padding: 6px 18px;
+    border-radius: 20px;
+    opacity: 0;
+  }
+
+  .title {
+    font-size: 52px;
+    font-weight: 700;
+    color: #ffffff;
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  .subtitle {
+    font-size: 28px;
+    color: #a8dadc;
+    opacity: 0;
+  }
+
+  .conjuncts {
+    font-size: 36px;
+    color: #f1faee;
+    opacity: 0;
+    background: #16213e;
+    padding: 16px 32px;
+    border-radius: 12px;
+    letter-spacing: 8px;
+  }
+
+  .definition {
+    font-size: 26px;
+    color: #e9c46a;
+    opacity: 0;
+    text-align: center;
+    max-width: 900px;
+    line-height: 1.6;
+  }
+
+  .tick {
+    font-size: 22px;
+    color: #06d6a0;
+    opacity: 0;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"
+     data-composition-id="kannada-test"
+     data-start="0"
+     data-width="1280"
+     data-height="720">
+
+  <!-- Chapter badge -->
+  <div class="chapter-badge" id="badge">ಅಧ್ಯಾಯ ೨</div>
+
+  <!-- Title -->
+  <div class="title" id="title">ರೇಖೆಗಳು ಮತ್ತು ಕೋನಗಳು</div>
+
+  <!-- Subtitle -->
+  <div class="subtitle" id="subtitle">Lines and Angles</div>
+
+  <!-- Conjunct test — these must render as single glyphs, not broken -->
+  <div class="conjuncts" id="conjuncts">ಲ್ಲಿ · ನ್ಯಾ · ಕ್ಕೆ · ಶ್ರ · ಕ್ಷ</div>
+
+  <!-- Sample definition -->
+  <div class="definition" id="def">
+    ಒಂದು <strong>ಬಿಂದು</strong> ಒಂದು ನಿಖರವಾದ ಸ್ಥಾನವನ್ನು ನಿರ್ಧರಿಸುತ್ತದೆ.
+    ಅದಕ್ಕೆ ಉದ್ದ, ಅಗಲ ಅಥವಾ ಎತ್ತರವಿಲ್ಲ.
+  </div>
+
+  <!-- Shaping verification note -->
+  <div class="tick" id="tick">✓ ಕನ್ನಡ ಅಕ್ಷರ ರೂಪಣೆ ಸರಿಯಾಗಿದೆ</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+<script>
+  const tl = gsap.timeline({ paused: true });
+
+  tl
+    .to('#badge',    { opacity: 1, duration: 0.4 },              0.2)
+    .to('#title',    { opacity: 1, y: 0, duration: 0.6 },        0.5)
+    .to('#subtitle', { opacity: 1, duration: 0.4 },              1.0)
+    .to('#conjuncts',{ opacity: 1, duration: 0.5 },              1.5)
+    .to('#def',      { opacity: 1, duration: 0.6 },              2.5)
+    .to('#tick',     { opacity: 1, duration: 0.4 },              3.8);
+
+  // Register for HyperFrames engine
+  window.__timelines = window.__timelines || {};
+  window.__timelines['kannada-test'] = tl;
+</script>
+</body>
+</html>

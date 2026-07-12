@@ -1,0 +1,65 @@
+name: Render video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video:
+        description: "Video directory under hyperframes/ (e.g. ch2-v1)"
+        required: true
+        default: ch2-v1
+      tts:
+        description: "Include Kannada voiceover? (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update --allow-releaseinfo-change -qq
+          sudo apt-get install -y -qq ffmpeg \
+            libglib2.0-0 libnss3 libnspr4 libdbus-1-3 \
+            libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libasound2 \
+            libx11-6 libxcb1 libxext6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install HyperFrames
+        run: npm install -g hyperframes
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install gTTS
+
+      - name: Download source PDF from Drive
+        if: env.GDRIVE_CREDENTIALS != ''
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+        run: |
+          echo "Drive download step — configure in secrets if needed"
+
+      - name: Render
+        run: |
+          TTS_FLAG=""
+          if [ "${{ inputs.tts }}" = "true" ]; then TTS_FLAG="--tts"; fi
+          python3 pipeline/hf_build.py hyperframes/${{ inputs.video }}/ $TTS_FLAG
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.video }}-${{ github.run_id }}
+          path: |
+            hyperframes/${{ inputs.video }}/*-final.mp4
+            hyperframes/${{ inputs.video }}/*.srt
+          retention-days: 7
