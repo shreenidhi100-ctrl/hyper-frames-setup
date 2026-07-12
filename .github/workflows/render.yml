@@ -11,6 +11,10 @@ on:
         description: "Include Kannada voiceover? (true/false)"
         required: false
         default: "false"
+      upload:
+        description: "Upload to Drive + YouTube private? (true/false)"
+        required: false
+        default: "true"
 
 jobs:
   render:
@@ -42,24 +46,25 @@ jobs:
       - name: Install Python deps
         run: pip install gTTS
 
-      - name: Download source PDF from Drive
-        if: env.GDRIVE_CREDENTIALS != ''
+      - name: Render + upload
         env:
-          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_FOLDER_ID:            ${{ secrets.GDRIVE_FOLDER_ID }}
+          YOUTUBE_REFRESH_TOKEN:       ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_CLIENT_ID:           ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET:       ${{ secrets.YOUTUBE_CLIENT_SECRET }}
         run: |
-          echo "Drive download step — configure in secrets if needed"
+          FLAGS=""
+          if [ "${{ inputs.tts }}"     = "true" ]; then FLAGS="$FLAGS --tts";    fi
+          if [ "${{ inputs.upload }}"  = "true" ]; then FLAGS="$FLAGS --upload"; fi
+          python3 pipeline/hf_build.py hyperframes/${{ inputs.video }}/ $FLAGS
 
-      - name: Render
-        run: |
-          TTS_FLAG=""
-          if [ "${{ inputs.tts }}" = "true" ]; then TTS_FLAG="--tts"; fi
-          python3 pipeline/hf_build.py hyperframes/${{ inputs.video }}/ $TTS_FLAG
-
-      - name: Upload artifact
+      - name: Save artifact (fallback if Drive upload skipped)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.video }}-${{ github.run_id }}
           path: |
             hyperframes/${{ inputs.video }}/*-final.mp4
             hyperframes/${{ inputs.video }}/*.srt
+            hyperframes/${{ inputs.video }}/thumbnail.jpg
           retention-days: 7

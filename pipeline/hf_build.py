@@ -137,6 +137,10 @@ def main():
                     help="lint only, do not render")
     ap.add_argument("--force",     action="store_true",
                     help="re-render even if output already exists")
+    ap.add_argument("--upload",    action="store_true",
+                    help="after render: upload to Drive (review) then YouTube (private)")
+    ap.add_argument("--publish",   action="store_true",
+                    help="with --upload: set YouTube visibility to Public instead of Private")
     args = ap.parse_args()
 
     video_dir = Path(args.video_dir).resolve()
@@ -173,6 +177,27 @@ def main():
     print(f"  subs  : {srt_path}")
     if args.tts:
         print(f"  voice : baked in  (lang={args.lang})")
+
+    if args.upload:
+        # ── Drive upload (for review) ─────────────────────────────────────
+        import os
+        if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") and os.environ.get("GDRIVE_FOLDER_ID"):
+            print("\n── drive upload ─────────────────────────────────")
+            from drive_upload import upload_video_and_srt
+            links = upload_video_and_srt(final_mp4, srt_path)
+            print(f"  Drive review link: {links['video']}")
+        else:
+            print("\n  (skipping Drive upload — GOOGLE_SERVICE_ACCOUNT_JSON / GDRIVE_FOLDER_ID not set)")
+
+        # ── YouTube upload (private) ──────────────────────────────────────
+        if os.environ.get("YOUTUBE_REFRESH_TOKEN"):
+            print("\n── youtube upload ────────────────────────────────")
+            from youtube_upload import upload as yt_upload
+            privacy  = "public" if args.publish else "private"
+            yt_url   = yt_upload(video_dir, privacy=privacy)
+            print(f"\n  YouTube ({privacy}): {yt_url}")
+        else:
+            print("\n  (skipping YouTube upload — YOUTUBE_REFRESH_TOKEN not set)")
 
 
 if __name__ == "__main__":
