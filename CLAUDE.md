@@ -96,6 +96,10 @@ build. It catches in seconds what would otherwise fail after minutes.
   Noto Sans Kannada is better if available. Verify shaping by
   rendering a frame containing conjuncts (ಲ್ಲಿ, ನ್ಯಾ, ಕ್ಕೆ) and checking
   visually — fc-list alone doesn't prove shaping works.
+- On Claude Code on the web, `.claude/hooks/session-start.sh` installs
+  ffmpeg automatically via a `SessionStart` hook (only when
+  `CLAUDE_CODE_REMOTE=true`; a no-op locally) so remote sessions don't
+  need a manual `apt-get` before rendering works.
 
 ## Hard-won gotchas (violate these at your peril)
 1. **Playwright font settling**: after `page.goto`, wait ~400ms before
