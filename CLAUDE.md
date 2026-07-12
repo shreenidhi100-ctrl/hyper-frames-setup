@@ -21,6 +21,11 @@ second `t` on a 1280×720 canvas. Everything else derives from that:
 - **Audio**: `window.chimeTimes()` returns answer-reveal timestamps;
   ffmpeg synthesizes a two-note chime and overlays copies at those
   offsets on a silent base track.
+- **Voiceover**: `hf_build.py --tts` synthesizes narration from the cues.
+  Providers: `gtts` (default — free, robotic), `sarvam` (Indic-native,
+  **recommended for Kannada** — see `docs/tts-sarvam.md`), and `elevenlabs`
+  (natural general voice — see `docs/tts-elevenlabs.md`). Publish with
+  `--tts-provider sarvam`; kids disengage from flat robotic reads.
 - **Assembly**: `pipeline/build.py` renders each scene as an
   independent MP4 segment (resumable via `out/manifest.json`), then
   losslessly concats + muxes audio + writes the SRT.
@@ -37,6 +42,39 @@ The teaching arc per scene: question (0.3s) → hint line (2.2s) → slow
 animated build with captions → pulsing guess prompt (G..R) → reveal
 with arithmetic (R) → explanation banner (B). Preserve this arc when
 adding scenes.
+
+## Animation is mandatory (every scene, always)
+
+The audience is children — a static frame loses them in seconds. Every
+scene MUST stay in motion; a slide that fades in and then freezes is a
+defect, not an acceptable scene. Enforce ALL of these when writing or
+reviewing any scene:
+
+1. **Every element enters with motion**, never a hard cut. Use
+   `fadeIn`/`slideIn` (opacity + transform), staggered so items arrive one
+   at a time — not all at once.
+2. **The diagram builds progressively.** Draw lines/arcs/dots one-by-one
+   (stroke-dashoffset draw-on, or sequential opacity reveals) so the viewer
+   watches the figure construct itself. Never reveal a finished diagram in
+   a single step.
+3. **At least one continuous/ambient motion is on screen at all times** —
+   the guess prompt pulses, the focus element breathes (subtle scale
+   loop), an arrow sweeps, a highlight travels along an arm. No stretch of
+   the timeline longer than ~2s may show a completely still frame.
+4. **The reveal is animated** — pop in with a slight overshoot
+   (`back.out` ease) or a wipe, timed with the chime; never an instant
+   appearance.
+5. **Motion stays deterministic.** All animation lives on the GSAP
+   timeline (`tl.to`/`tl.fromTo`, including `repeat:-1, yoyo:true` loops,
+   which are fine because `renderFrame` seeks to time `t`). NEVER
+   `Date.now()`, unseeded `Math.random()`, CSS keyframe animations, or
+   `setTimeout` in a draw path — `renderFrame(t)` must remain a pure
+   function of `t` (see roadmap invariants).
+
+Put reusable loop/ease helpers next to `showScene`/`fadeIn`/`slideIn` in the
+composition's `<script>` block rather than inlining one-offs — e.g. a
+`pulse(sel, tl, at)` (looping scale) and a `drawOn(sel, tl, at)`
+(stroke-dashoffset draw-on). Reuse them across scenes.
 
 ## Commands
 
@@ -124,6 +162,20 @@ Existing: `sequence-row`, `dot-triangle`, `growing-grids`, `layered-square`,
 For each new chapter, explicitly list which templates are reused and which
 must be built first. Do not write question scenes that depend on a template
 that doesn't exist yet.
+
+## Version control per video (standing policy)
+
+Every generated video is committed as **source, never as rendered output**:
+- **Commit**: `hyperframes/<video>/index.html` + `narration.json` — the
+  reproducible source, and nothing else.
+- **Never commit**: `*-final.mp4`, `*.srt`, `preview.html`, `thumbnail.jpg`
+  (gitignored, regenerable). Review the *pixels* via the preview artifact or
+  YouTube-private; the PR reviews the *code*.
+- **Flow — one branch + PR per video.** After a successful render, push the
+  source to a branch (`<video>` for a single video, or
+  `<chapter>-videos-<range>` for a batch) and open a PR. `main` stays
+  known-good; it is merged only after the preview has been watched and the
+  diff skimmed. Never commit straight to `main`.
 
 ## Roadmap / invariants for extension
 - **Data-driven scenes** (next big step): extract the reusable visual

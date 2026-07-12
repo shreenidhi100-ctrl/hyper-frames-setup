@@ -81,12 +81,13 @@ def step_srt(narr_path):
     return srt_path
 
 
-def step_tts(cues, total_dur, lang):
-    print(f"── voiceover ({len(cues)} cues, lang={lang}) ──────────────────")
+def step_tts(cues, total_dur, lang, provider, voice, model):
+    print(f"── voiceover ({len(cues)} cues, {provider}, lang={lang}) ──────────────────")
     sys.path.insert(0, str(HERE))
     from tts import build_voice_track
     tmp = tempfile.mkdtemp(prefix="hf_tts_")
-    voice_wav = build_voice_track(cues, total_dur, lang, tmp)
+    voice_wav = build_voice_track(cues, total_dur, lang, tmp,
+                                  provider=provider, voice=voice, model=model)
     print()
     return voice_wav
 
@@ -130,9 +131,19 @@ def main():
     ap.add_argument("--fps",       type=int, default=20,
                     help="frames per second (default: 20)")
     ap.add_argument("--tts",       action="store_true",
-                    help="synthesize Kannada voiceover with gTTS (needs internet)")
+                    help="synthesize Kannada voiceover (needs internet)")
+    ap.add_argument("--tts-provider", default="gtts",
+                    choices=["gtts", "sarvam", "elevenlabs"],
+                    help="voice engine: gtts (free, robotic), sarvam (Indic-native, "
+                         "best Kannada — SARVAM_API_KEY, see docs/tts-sarvam.md), or "
+                         "elevenlabs (ELEVENLABS_API_KEY, see docs/tts-elevenlabs.md)")
+    ap.add_argument("--voice",     default=None,
+                    help="voice/speaker (sarvam speaker e.g. anushka, or elevenlabs "
+                         "voice id; else the provider's *_VOICE/SPEAKER env var)")
+    ap.add_argument("--tts-model", default=None,
+                    help="provider model id (else provider's *_MODEL env var)")
     ap.add_argument("--lang",      default="kn",
-                    help="BCP-47 language for gTTS (default: kn)")
+                    help="BCP-47 language for gtts provider (default: kn)")
     ap.add_argument("--lint-only", action="store_true",
                     help="lint only, do not render")
     ap.add_argument("--force",     action="store_true",
@@ -168,7 +179,9 @@ def main():
 
     raw_mp4   = step_render(video_dir, video_id, args.fps, args.force)
     srt_path  = step_srt(narr_path)
-    voice_wav = step_tts(cues, total_dur, args.lang) if args.tts else None
+    voice_wav = (step_tts(cues, total_dur, args.lang,
+                          args.tts_provider, args.voice, args.tts_model)
+                 if args.tts else None)
     final_mp4 = video_dir / f"{video_id}-final.mp4"
     step_mux(raw_mp4, srt_path, voice_wav, final_mp4)
 
@@ -182,7 +195,7 @@ def main():
     print(f"  subs    : {srt_path}")
     print(f"  preview : {preview_html}  ← publish as Artifact")
     if args.tts:
-        print(f"  voice : baked in  (lang={args.lang})")
+        print(f"  voice   : baked in  ({args.tts_provider}, lang={args.lang})")
 
     if args.upload:
         # ── Drive upload (for review) ─────────────────────────────────────

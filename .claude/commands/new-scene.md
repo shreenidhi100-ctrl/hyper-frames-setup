@@ -69,6 +69,11 @@ Rules:
   Kannada text in SVG needs `font-family="Noto Sans Kannada, sans-serif"`.
 - The `.trick` div always shows the video's **common trick** (from the
   plan), not a scene-specific tip.
+- **Animation is mandatory (see CLAUDE.md → "Animation is mandatory").**
+  Give the diagram parts that build progressively (each line/arc/dot its own
+  reveal element) and at least one element that can carry a *continuous*
+  loop (a pulsing guess prompt, a breathing focus ring, a sweeping arrow).
+  A scene where everything fades in once and then holds still is a defect.
 
 ### B) GSAP keyframes in the `<script>` block
 
@@ -81,11 +86,15 @@ showScene('s-qN', tl, START);
 fadeIn('#qN-lbl',  tl, START + 0.2, 0.3);
 slideIn('#qN-q',   tl, START + 0.5);
 fadeIn('#qN-d',    tl, START + 1.2, 0.4);
-// animate SVG reveal elements one by one:
+// diagram BUILDS progressively — each part its own reveal, staggered:
 tl.to('#qN-elem1', { opacity: 1, duration: 0.4 }, START + 2.0);
+drawOn('#qN-line', tl, START + 2.6);          // stroke draws on, not a cut
 tl.to('#qN-elem2', { opacity: 1, duration: 0.4 }, START + 3.5);
-// ...
-slideIn('#qN-rev',   tl, REVEAL_TIME);
+// CONTINUOUS motion so the frame is never still (loops until scene hides):
+pulse('#qN-guess', tl, START + 4.0);          // e.g. the guess prompt
+// reveal with an overshoot pop, not an instant appearance:
+tl.fromTo('#qN-rev', { opacity: 0, scale: 0.8 },
+          { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.7)' }, REVEAL_TIME);
 fadeIn('#qN-trick',  tl, REVEAL_TIME + 2.0);
 hideScene('s-qN', tl, END);
 ```
@@ -93,6 +102,28 @@ hideScene('s-qN', tl, END);
 Replace START / REVEAL_TIME / END with absolute seconds (matching the
 scene duration table above). The hideScene time = START of the next
 scene.
+
+**Continuous motion is required** — at least one element per scene must
+loop so no ~2s window is a dead still frame (CLAUDE.md rule 3). If the
+composition doesn't already have these helpers, add them once to the
+`<script>` block alongside `showScene`/`fadeIn`/`slideIn`:
+
+```javascript
+// looping "breathing" scale — deterministic (timeline seeks to t)
+function pulse(sel, tl, at, scale=1.08, dur=0.7) {
+  tl.set(sel, { opacity: 1, transformOrigin: '50% 50%' }, at);
+  tl.to(sel, { scale, duration: dur, ease: 'sine.inOut',
+               repeat: -1, yoyo: true }, at);
+}
+// stroke draw-on for an SVG <line>/<path> (set pathLength or use its length)
+function drawOn(sel, tl, at, dur=0.6) {
+  tl.set(sel, { opacity: 1, strokeDasharray: 1000, strokeDashoffset: 1000 }, at);
+  tl.to(sel, { strokeDashoffset: 0, duration: dur, ease: 'power1.inOut' }, at);
+}
+```
+
+These are pure GSAP tweens — no `Date.now`, `setTimeout`, or CSS keyframes —
+so `renderFrame(t)` stays deterministic.
 
 ### C) Narration cues in `narration.json`
 
