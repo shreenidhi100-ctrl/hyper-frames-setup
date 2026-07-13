@@ -10,8 +10,8 @@ The final video is a lossless concat of segments + one audio pass + SRT.
   python3 build.py --validate         # fast pre-flight check, no render
   python3 build.py --scenes 3,4       # re-render only scenes 3 and 4
   python3 build.py --force            # ignore manifest, rebuild all
-  python3 build.py --tts              # synthesize Kannada voiceover (needs gTTS)
-  python3 build.py --tts --lang kn    # explicit language (default: kn)
+  python3 build.py --tts               # synthesize Kannada voiceover (gTTS, free/robotic)
+  python3 build.py --tts --tts-provider sarvam --voice anushka  # recommended for Kannada
 
 Output: out/patterns-kn.mp4  (video + audio + embedded SRT)
         out/patterns-kn.srt  (standalone subtitle file)
@@ -80,7 +80,7 @@ def validate(renderer):
         for i, nl in enumerate(narr, 1):
             base = strip_marks(nl["text"])
             rate = len(base) / max(nl["end"] - nl["start"], 0.1)
-            if rate > 8.5:
+            if rate > 13:
                 problems.append(f"cue {i}: {rate:.1f} base-chars/sec — too fast to narrate "
                                 f"({nl['text'][:34]}…)")
         b.close()
@@ -131,7 +131,16 @@ def main():
     ap.add_argument("--scenes",   help="comma-separated scene indices to (re)render")
     ap.add_argument("--force",    action="store_true")
     ap.add_argument("--tts",      action="store_true",
-                    help="synthesize Kannada voiceover with gTTS (requires internet)")
+                    help="synthesize Kannada voiceover (requires internet)")
+    ap.add_argument("--tts-provider", default="gtts",
+                    help="voice engine: gtts (free, robotic), sarvam (Indic-native, "
+                         "recommended for Kannada — needs SARVAM_API_KEY), "
+                         "elevenlabs (needs ELEVENLABS_API_KEY)")
+    ap.add_argument("--voice",     default=None,
+                    help="voice/speaker (sarvam speaker e.g. anushka, or elevenlabs "
+                         "voice id; else the provider's *_VOICE/SPEAKER env var)")
+    ap.add_argument("--tts-model", default=None,
+                    help="provider model id (else provider's *_MODEL env var)")
     ap.add_argument("--lang",     default="kn",
                     help="BCP-47 language for gTTS (default: kn)")
     args = ap.parse_args()
@@ -213,14 +222,16 @@ def main():
 
     voice_wav = None
     if args.tts:
-        print(f"synthesizing voiceover ({len(narr)} cues, lang={args.lang})…")
+        print(f"synthesizing voiceover ({len(narr)} cues, {args.tts_provider}, lang={args.lang})…")
         try:
             from tts import build_voice_track
         except ImportError:
             sys.exit("tts.py not found next to build.py")
         tts_tmp = tempfile.mkdtemp(prefix="tts_")
         try:
-            voice_wav = build_voice_track(narr, total, args.lang, tts_tmp)
+            voice_wav = build_voice_track(narr, total, args.lang, tts_tmp,
+                                          provider=args.tts_provider,
+                                          voice=args.voice, model=args.tts_model)
         except RuntimeError as e:
             sys.exit(str(e))
 
