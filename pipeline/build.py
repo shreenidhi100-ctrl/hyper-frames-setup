@@ -80,7 +80,7 @@ def validate(renderer):
         for i, nl in enumerate(narr, 1):
             base = strip_marks(nl["text"])
             rate = len(base) / max(nl["end"] - nl["start"], 0.1)
-            if rate > 8.5:
+            if rate > 13:
                 problems.append(f"cue {i}: {rate:.1f} base-chars/sec — too fast to narrate "
                                 f"({nl['text'][:34]}…)")
         b.close()

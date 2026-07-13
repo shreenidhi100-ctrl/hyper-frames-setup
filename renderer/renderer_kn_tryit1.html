@@ -30,7 +30,7 @@ function timeline(G){ return {G, R:G+3.0, B:G+4.0, DUR:G+9.5}; }
 const GUESS_DEFAULT='ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಊಹಿಸಿ ನೋಡಿ!';
 function need(s){
   const base=s.replace(/[\u0CBE-\u0CCD\u0CD5\u0CD6\u200C\u200D]/g,'');
-  return base.length/5.2+0.5;
+  return base.length/11+0.3;
 }
 function autoTL(n, vizReady, guessText=GUESS_DEFAULT){
   const qEnd=0.4+need(n.q);
@@ -155,9 +155,9 @@ function thinkPulse(t){
 }
 
 /* --- title --- */
-SCENES.push({dur:15.0, narr:[
-  {at:0.4, end:7.0, text:'ಪುಟ ಏಳು — ಲೆಕ್ಕಾಚಾರ ಮಾಡಿ. ಗೊತ್ತಿರುವ ವಿನ್ಯಾಸಗಳ ನಡುವಿನ ನಂಟು ಹುಡುಕೋಣ.'},
-  {at:7.3, end:14.3, text:'ಒಂದು ವಿನ್ಯಾಸವನ್ನು ಜೋಡಿಸಿ ಅಥವಾ ಬದಲಿಸಿ — ಹೊಸ ವಿನ್ಯಾಸ ಸಿಗುತ್ತದೆ!'}
+SCENES.push({dur:10.5, narr:[
+  {at:0.4, end:4.8, text:'ಪುಟ ಏಳು — ಲೆಕ್ಕಾಚಾರ ಮಾಡಿ. ಗೊತ್ತಿರುವ ವಿನ್ಯಾಸಗಳ ನಡುವಿನ ನಂಟು ಹುಡುಕೋಣ.'},
+  {at:5.2, end:9.2, text:'ಒಂದು ವಿನ್ಯಾಸವನ್ನು ಜೋಡಿಸಿ ಅಥವಾ ಬದಲಿಸಿ — ಹೊಸ ವಿನ್ಯಾಸ ಸಿಗುತ್ತದೆ!'}
 ], draw(t){
   thinkPulse(t);
   ctx.fillStyle=TEALD; ctx.font=`700 24px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
@@ -258,11 +258,11 @@ SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 2 · ಪಿರಮಿಡ್ �
 }
 
 /* --- Q3: all-1s row, two ways to add --- */
-SCENES.push({dur:37.0, tag:'ಪ್ರಶ್ನೆ 3 · ಒಂದೇ 1 ಬೇರೆ ಬೇರೆ ಜೋಡಣೆ', tagColor:GOLD[0], narr:[
-  {at:0.4, end:6.6, text:'ಎಲ್ಲಾ ಒಂದರ ಸಾಲನ್ನು ಏರಿಕೆ ಕ್ರಮದಲ್ಲಿ ಕೂಡಿದರೆ ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?'},
-  {at:7.0, end:17.2, text:'ಎಡಗಡೆ ನೋಡಿ — ಪ್ರತಿ ಸಾಲಿಗೂ ಇನ್ನೊಂದು ಬ್ಲಾಕ್ ಸೇರುತ್ತಾ ಹೋಗುತ್ತದೆ, ಒಂದರಿಂದ ಐದರವರೆಗೆ.'},
-  {at:17.6, end:27.3, text:'ಬಲಗಡೆ ನೋಡಿ — ಒಂದೇ ಬ್ಲಾಕುಗಳನ್ನು ಏರಿಸಿ ಮತ್ತೆ ಇಳಿಸಿ ಜೋಡಿಸಿದರೆ ಸಾಲುಗಳ ಗಾತ್ರ ಬೇರೆಯೇ ಆಗುತ್ತದೆ.'},
-  {at:27.7, end:36.2, text:'ಎಡಗಡೆ ಎಣಿಕೆ ಸಂಖ್ಯೆ, ಬಲಗಡೆ ಬೆಸ ಸಂಖ್ಯೆ — ಒಂದೇ ಬ್ಲಾಕ್, ಎರಡು ಬೇರೆ ಶ್ರೇಣಿ!'}
+SCENES.push({dur:23.0, tag:'ಪ್ರಶ್ನೆ 3 · ಒಂದೇ 1 ಬೇರೆ ಬೇರೆ ಜೋಡಣೆ', tagColor:GOLD[0], narr:[
+  {at:0.4, end:4.6, text:'ಎಲ್ಲಾ ಒಂದರ ಸಾಲನ್ನು ಏರಿಕೆ ಕ್ರಮದಲ್ಲಿ ಕೂಡಿದರೆ ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?'},
+  {at:5.0, end:10.2, text:'ಎಡಗಡೆ ನೋಡಿ — ಪ್ರತಿ ಸಾಲಿಗೂ ಇನ್ನೊಂದು ಬ್ಲಾಕ್ ಸೇರುತ್ತಾ ಹೋಗುತ್ತದೆ, ಒಂದರಿಂದ ಐದರವರೆಗೆ.'},
+  {at:10.6, end:16.3, text:'ಬಲಗಡೆ ನೋಡಿ — ಒಂದೇ ಬ್ಲಾಕುಗಳನ್ನು ಏರಿಸಿ ಮತ್ತೆ ಇಳಿಸಿ ಜೋಡಿಸಿದರೆ ಸಾಲುಗಳ ಗಾತ್ರ ಬೇರೆಯೇ ಆಗುತ್ತದೆ.'},
+  {at:16.7, end:21.6, text:'ಎಡಗಡೆ ಎಣಿಕೆ ಸಂಖ್ಯೆ, ಬಲಗಡೆ ಬೆಸ ಸಂಖ್ಯೆ — ಒಂದೇ ಬ್ಲಾಕ್, ಎರಡು ಬೇರೆ ಶ್ರೇಣಿ!'}
 ], draw(t){
   thinkPulse(t);
   question('ಒಂದೇ "1" — ಎರಡು ಬೇರೆ ಜೋಡಣೆ, ಎರಡು ಬೇರೆ ಶ್ರೇಣಿ',t);
@@ -272,35 +272,35 @@ SCENES.push({dur:37.0, tag:'ಪ್ರಶ್ನೆ 3 · ಒಂದೇ 1 ಬೇರ�
   const lx=W/2-330;
   for(let row=1;row<=5;row++){
     for(let c=0;c<row;c++){
-      const s=3.4+(row-1)*0.9+c*0.15, sc=popAt(t,s); if(sc<=0)continue;
+      const s=5.0+(row-1)*0.65+c*0.11, sc=popAt(t,s); if(sc<=0)continue;
       ctx.save(); ctx.globalAlpha=clamp(sc,0,1); ctx.fillStyle=sh(TEAL,row-1);
       roundRect(lx+c*(cell+gapC), 236+(row-1)*40, cell, cell, 6); ctx.fill(); ctx.restore();
     }
-    if(t>3.4+(row-1)*0.9+row*0.15+0.2){
+    if(t>5.0+(row-1)*0.65+row*0.11+0.2){
       ctx.fillStyle=SOFT; ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
       ctx.fillText(`${row}`, lx+row*(cell+gapC)+10, 236+(row-1)*40+cell/2);
     }
   }
   ctx.fillStyle=TEALD; ctx.font=`700 22px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
-  if(t>8.5) ctx.fillText('ಎಣಿಕೆ ಸಂಖ್ಯೆ: 1,2,3,4,5', lx+150, 470);
+  if(t>8.6) ctx.fillText('ಎಣಿಕೆ ಸಂಖ್ಯೆ: 1,2,3,4,5', lx+150, 470);
   // right: pyramid of 1s, row n has n up + (n-1) down -> odd numbers
   const rx=W/2+230, sizes=[1,3,5,7,9];
   let y=236;
   sizes.forEach((sz,row)=>{
     for(let c=0;c<sz;c++){
-      const s=17.8+row*1.1+c*0.13, sc=popAt(t,s); if(sc<=0)return;
+      const s=10.6+row*0.55+c*0.09, sc=popAt(t,s); if(sc<=0)return;
       ctx.save(); ctx.globalAlpha=clamp(sc,0,1); ctx.fillStyle=sh(CORAL,row);
       roundRect(rx-(sz*(cell+gapC))/2+c*(cell+gapC), y, cell, cell, 6); ctx.fill(); ctx.restore();
     }
-    if(t>17.8+row*1.1+sz*0.13+0.2){
+    if(t>10.6+row*0.55+sz*0.09+0.2){
       ctx.fillStyle=SOFT; ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText(`${sz}`, rx, y+cell+14);
     }
     y+=cell+34;
   });
   ctx.fillStyle='#B5401F'; ctx.font=`700 22px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
-  if(t>24.0) ctx.fillText('ಬೆಸ ಸಂಖ್ಯೆ: 1,3,5,7,9', rx, 470);
-  answerBanner(t,28.0,'','ಎಣಿಕೆ ಸಂಖ್ಯೆ ಮತ್ತು ಬೆಸ ಸಂಖ್ಯೆ — ಒಂದೇ "1" ಎಂಬ ಬ್ಲಾಕ್, ಜೋಡಣೆ ಬದಲಾದರೆ ಶ್ರೇಣಿ ಬದಲಾಗುತ್ತದೆ.',GOLD[0]);
+  if(t>14.0) ctx.fillText('ಬೆಸ ಸಂಖ್ಯೆ: 1,3,5,7,9', rx, 470);
+  answerBanner(t,16.7,'','ಎಣಿಕೆ ಸಂಖ್ಯೆ ಮತ್ತು ಬೆಸ ಸಂಖ್ಯೆ — ಒಂದೇ "1" ಎಂಬ ಬ್ಲಾಕ್, ಜೋಡಣೆ ಬದಲಾದರೆ ಶ್ರೇಣಿ ಬದಲಾಗುತ್ತದೆ.',GOLD[0]);
 }});
 
 /* --- Q4: counting numbers summed -> triangular numbers (dot-triangle) --- */
@@ -467,11 +467,11 @@ SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 8 · ಷಡ್ಭುಜ ಪ�
 }
 
 /* --- Q9: open — connections map across Table 1's series --- */
-SCENES.push({dur:31.5, tag:'ಪ್ರಶ್ನೆ 9 · ನಂಟುಗಳ ನಕ್ಷೆ', tagColor:TEAL[0], narr:[
-  {at:0.4, end:6.4, text:'ಕೋಷ್ಟಕ ಒಂದರ ಎಲ್ಲಾ ಶ್ರೇಣಿಗಳ ನಡುವಿನ ನಂಟುಗಳನ್ನು ಒಟ್ಟಿಗೆ ನೋಡೋಣ.'},
-  {at:6.8, end:12.4, text:'ಎಣಿಕೆ ಸಂಖ್ಯೆ ಕೂಡಿಸಿದರೆ ತ್ರಿಕೋನೀಯ, ಬೆಸ ಸಂಖ್ಯೆ ಕೂಡಿಸಿದರೆ ಚೌಕ ಸಂಖ್ಯೆ.'},
-  {at:12.8, end:22.2, text:'ಎರಡು ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆ ಜೋಡಿಸಿದರೆ ಚೌಕ, ಆರರಿಂದ ಗುಣಿಸಿ ಒಂದು ಸೇರಿಸಿದರೆ ಷಡ್ಭುಜ, ಷಡ್ಭುಜ ಕೂಡಿಸಿದರೆ ಘನ.'},
-  {at:22.6, end:30.8, text:'ಇನ್ನೂ ಎಷ್ಟು ನಂಟುಗಳಿವೆ? ಕೋಷ್ಟಕ ಒಂದನ್ನು ನೋಡುತ್ತಾ ನಿಮ್ಮದೇ ಆದ ನಂಟುಗಳನ್ನು ಹುಡುಕಿ!'}
+SCENES.push({dur:23.5, tag:'ಪ್ರಶ್ನೆ 9 · ನಂಟುಗಳ ನಕ್ಷೆ', tagColor:TEAL[0], narr:[
+  {at:0.4, end:4.5, text:'ಕೋಷ್ಟಕ ಒಂದರ ಎಲ್ಲಾ ಶ್ರೇಣಿಗಳ ನಡುವಿನ ನಂಟುಗಳನ್ನು ಒಟ್ಟಿಗೆ ನೋಡೋಣ.'},
+  {at:4.9, end:9.2, text:'ಎಣಿಕೆ ಸಂಖ್ಯೆ ಕೂಡಿಸಿದರೆ ತ್ರಿಕೋನೀಯ, ಬೆಸ ಸಂಖ್ಯೆ ಕೂಡಿಸಿದರೆ ಚೌಕ ಸಂಖ್ಯೆ.'},
+  {at:9.6, end:15.8, text:'ಎರಡು ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆ ಜೋಡಿಸಿದರೆ ಚೌಕ, ಆರರಿಂದ ಗುಣಿಸಿ ಒಂದು ಸೇರಿಸಿದರೆ ಷಡ್ಭುಜ, ಷಡ್ಭುಜ ಕೂಡಿಸಿದರೆ ಘನ.'},
+  {at:16.2, end:21.2, text:'ಇನ್ನೂ ಎಷ್ಟು ನಂಟುಗಳಿವೆ? ಕೋಷ್ಟಕ ಒಂದನ್ನು ನೋಡುತ್ತಾ ನಿಮ್ಮದೇ ಆದ ನಂಟುಗಳನ್ನು ಹುಡುಕಿ!'}
 ], draw(t){
   thinkPulse(t);
   question('ಕೋಷ್ಟಕ 1 ರ ಶ್ರೇಣಿಗಳ ನಡುವೆ ಎಷ್ಟು ನಂಟುಗಳು?',t);
@@ -505,22 +505,22 @@ SCENES.push({dur:31.5, tag:'ಪ್ರಶ್ನೆ 9 · ನಂಟುಗಳ ನಕ
     ctx.fillText(n[0],x,y+52);
     ctx.globalAlpha=1;
   });
-  const fsc=popAt(t,23.0,0.6);
+  const fsc=popAt(t,16.5,0.6);
   if(fsc>0){
     ctx.globalAlpha=clamp(fsc,0,1);
     ctx.fillStyle=TEALD; ctx.font=`700 24px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
     ctx.fillText('2 ರ ಘಾತ + 1 = 2 ರ ಘಾತ (ತನ್ನೊಳಗೇ ನಂಟು!)', cx, 656);
     ctx.globalAlpha=1;
   }
-  if(t>24.0){
-    answerBanner(t,24.0,'','ಸಂಶೋಧಿಸುತ್ತಾ ಇರಿ — ಗಣಿತದಲ್ಲಿ ಇನ್ನೂ ಅನೇಕ ಸುಂದರ ನಂಟುಗಳಿವೆ!',TEAL[0]);
+  if(t>17.5){
+    answerBanner(t,17.5,'','ಸಂಶೋಧಿಸುತ್ತಾ ಇರಿ — ಗಣಿತದಲ್ಲಿ ಇನ್ನೂ ಅನೇಕ ಸುಂದರ ನಂಟುಗಳಿವೆ!',TEAL[0]);
   }
 }});
 
 /* --- outro --- */
-SCENES.push({dur:15.5, narr:[
-  {at:0.4, end:8.0, text:'ಎಲ್ಲಾ ವಿನ್ಯಾಸಗಳೂ ಒಂದಕ್ಕೊಂದು ಬೆಸೆದುಕೊಂಡಿವೆ — ಒಂದು ಶ್ರೇಣಿ ಇನ್ನೊಂದಕ್ಕೆ ದಾರಿ ತೋರಿಸುತ್ತದೆ.'},
-  {at:8.4, end:15.0, text:'ಪುಟ ಏಳರ ಪ್ರಶ್ನೆಗಳು ಮುಗಿದವು. ಚೆನ್ನಾಗಿ ಕಲಿತಿರಿ!'}
+SCENES.push({dur:10.5, narr:[
+  {at:0.4, end:5.5, text:'ಎಲ್ಲಾ ವಿನ್ಯಾಸಗಳೂ ಒಂದಕ್ಕೊಂದು ಬೆಸೆದುಕೊಂಡಿವೆ — ಒಂದು ಶ್ರೇಣಿ ಇನ್ನೊಂದಕ್ಕೆ ದಾರಿ ತೋರಿಸುತ್ತದೆ.'},
+  {at:5.9, end:9.0, text:'ಪುಟ ಏಳರ ಪ್ರಶ್ನೆಗಳು ಮುಗಿದವು. ಚೆನ್ನಾಗಿ ಕಲಿತಿರಿ!'}
 ], draw(t){
   thinkPulse(t);
   ctx.globalAlpha=easeOut(t/0.5);
