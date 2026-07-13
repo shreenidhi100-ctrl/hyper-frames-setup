@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  html,body{margin:0;padding:0;background:#000;} canvas{display:block;}
+</style></head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=1280,H=720;
+const PAPER='#FBF4E6',INK='#22283B',SOFT='#5B5F73',TEALD='#136059';
+const TEAL=['#1F8A82','#2AA79E','#4FBDB3','#79CFC6','#A3E0D9'];
+const GOLD=['#D9A22C','#E2B24F','#EAC271','#F1D294','#F7E2B7'];
+const CORAL=['#E2572B','#E87A55','#EE9C7F','#F3BEA9','#F8E0D4'];
+const sh=(p,i)=>p[((i%p.length)+p.length)%p.length];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const easeOutBack=t=>{t=clamp(t,0,1);const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);};
+const easeOut=t=>{t=clamp(t,0,1);return 1-Math.pow(1-t,3);};
+const popAt=(t,s,d=0.45)=> t<s?0:easeOutBack((t-s)/d);
+
+/* Kannada-capable font stacks (FreeSerif ships in the render container) */
+const F_HEAD = '"FreeSerif", "Noto Serif Kannada", serif';
+const F_BODY = '"FreeSerif", "Noto Sans Kannada", sans-serif';
+const F_MONO = '"FreeSerif", monospace'; /* captions contain Kannada words */
+
+function timeline(G){ return {G, R:G+3.0, B:G+4.0, DUR:G+9.5}; }
+
+/* narration-driven timing: phase times derive from how long each line
+   takes to SPEAK (Kannada ≈ 5.2 base-chars/sec), so cues are never
+   too fast by construction. vizReady = when the build animation ends. */
+const GUESS_DEFAULT='ಮುಂದೆ ಏನು ಬರುತ್ತದೆ? ಊಹಿಸಿ ನೋಡಿ!';
+function need(s){
+  const base=s.replace(/[\u0CBE-\u0CCD\u0CD5\u0CD6\u200C\u200D]/g,'');
+  return base.length/5.2+0.5;
+}
+function autoTL(n, vizReady, guessText=GUESS_DEFAULT){
+  const qEnd=0.4+need(n.q);
+  const hintEnd=qEnd+0.2+need(n.hint);
+  const G=Math.max(vizReady, hintEnd+0.4);
+  const R=G+Math.max(3.0, need(guessText)+0.6);
+  const B=R+1.0;
+  const ansEnd=R+0.3+need(n.ans);
+  const DUR=Math.max(B+5.0, ansEnd+0.8);
+  return {G,R,B,DUR, narr:[
+    {at:0.4, end:qEnd, text:n.q},
+    {at:qEnd+0.2, end:hintEnd, text:n.hint},
+    {at:G, end:R-0.2, text:guessText},
+    {at:R+0.3, end:ansEnd, text:n.ans}
+  ]};
+}
+
+function bg(){
+  ctx.fillStyle=PAPER; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#DFD3B4';
+  for(let x=20;x<W;x+=34)for(let y=20;y<H;y+=34){ctx.beginPath();ctx.arc(x,y,1.6,0,7);ctx.fill();}
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function tag(text,color){
+  ctx.font=`700 22px ${F_BODY}`;
+  const w=ctx.measureText(text).width+28;
+  ctx.fillStyle=color; roundRect(60,38,w,40,10); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(text,74,59);
+}
+function question(text,t){
+  const a=easeOut((t-0.3)/0.6); if(a<=0)return;
+  ctx.globalAlpha=a; ctx.fillStyle=INK; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.font=`700 40px ${F_HEAD}`;
+  ctx.fillText(text,W/2,108-(1-a)*14);
+  ctx.globalAlpha=1;
+}
+function hint(text,t){
+  const a=easeOut((t-2.2)/0.6); if(a<=0)return;
+  ctx.globalAlpha=a; ctx.fillStyle=SOFT; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.font=`600 27px ${F_BODY}`;
+  ctx.fillText(text,W/2,172);
+  ctx.globalAlpha=1;
+}
+function guessPrompt(t,G,R){
+  if(t<G||t>R)return;
+  const a=easeOut((t-G)/0.5), pulse=1+0.05*Math.sin((t-G)*4.2);
+  ctx.save(); ctx.globalAlpha=a; ctx.translate(W/2,632); ctx.scale(pulse,pulse);
+  ctx.fillStyle=INK; roundRect(-300,-34,600,68,34); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(-248,0,22,0,7); ctx.fill();
+  ctx.fillStyle=INK; ctx.font=`700 30px ${F_HEAD}`; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('?',-248,2);
+  ctx.fillStyle='#fff'; ctx.font=`700 29px ${F_BODY}`; ctx.textAlign='left';
+  ctx.fillText('ಮುಂದೆ ಏನು? ಊಹಿಸಿ ನೋಡಿ!',-208,1);
+  ctx.restore(); ctx.globalAlpha=1;
+}
+function wrapText(text,x,y,maxW,lh,align='left',baseline='middle'){
+  ctx.textAlign=align; ctx.textBaseline=baseline;
+  const words=text.split(' '); const lines=[]; let line='';
+  for(const w of words){const test=line?line+' '+w:w;
+    if(ctx.measureText(test).width>maxW&&line){lines.push(line);line=w;}else line=test;}
+  lines.push(line);
+  const totalH=(lines.length-1)*lh;
+  lines.forEach((l,i)=>ctx.fillText(l,x,y-(baseline==='middle'?totalH/2:0)+i*lh));
+}
+function answerBanner(t,B,num,sentence,color){
+  const a=easeOut((t-B)/0.6); if(a<=0)return;
+  const bh=136,y=H-(bh+22)*a;
+  ctx.globalAlpha=Math.min(1,a*1.2);
+  ctx.fillStyle='#fff'; roundRect(70,y,W-140,bh,20); ctx.fill();
+  ctx.lineWidth=3; ctx.strokeStyle=INK; roundRect(70,y,W-140,bh,20); ctx.stroke();
+  ctx.fillStyle=color; ctx.fillRect(70,y,10,bh);
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillStyle=color; ctx.font=`700 50px ${F_HEAD}`;
+  const numW=num?ctx.measureText(num).width:0;
+  if(num)ctx.fillText(num,112,y+bh/2);
+  ctx.fillStyle=INK; ctx.font=`600 27px ${F_BODY}`;
+  wrapText(sentence,112+numW+(num?26:0),y+bh/2,W-280-numW,36);
+  ctx.globalAlpha=1;
+}
+function dot(x,y,r,color,scale,label){
+  if(scale<=0)return;
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+  if(label!==undefined){ctx.fillStyle='#fff';ctx.font=`700 ${Math.round(r*0.85)}px Menlo, monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,0,1);}
+  ctx.restore();
+}
+function ghostDot(x,y,r,t){
+  const pulse=1+0.06*Math.sin(t*3.5);
+  ctx.save(); ctx.translate(x,y); ctx.scale(pulse,pulse);
+  ctx.setLineDash([6,5]); ctx.strokeStyle='#BBAE8C'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#BBAE8C'; ctx.font=`700 ${Math.round(r*0.9)}px Menlo, monospace`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('?',0,1);
+  ctx.restore();
+}
+function mathStep(text,t,start,x,y,color){
+  const a=easeOut((t-start)/0.5); if(a<=0)return;
+  ctx.globalAlpha=a; ctx.fillStyle=color||TEALD;
+  ctx.font=`700 34px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(text,x,y); ctx.globalAlpha=1;
+}
+function polyPath(cx,cy,r,sides,rot=-Math.PI/2){
+  ctx.beginPath();
+  for(let i=0;i<sides;i++){const a=rot+Math.PI*2*i/sides;
+    const x=cx+r*Math.cos(a),y=cy+r*Math.sin(a); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+  ctx.closePath();
+}
+
+/* ================================ SCENES ================================ */
+const SCENES=[];
+
+/* continuous "connecting ideas" motif — present in every scene so no
+   stretch of the timeline is ever completely still (CLAUDE.md rule 3) */
+function breathe(t,speed,amp){return 1+(amp||0.05)*Math.sin(t*(speed||3.2));}
+function thinkPulse(t){
+  const s=breathe(t,2.6,0.22);
+  ctx.save(); ctx.globalAlpha=0.8; ctx.fillStyle=GOLD[1];
+  ctx.beginPath(); ctx.arc(1204,64,7*s,0,7); ctx.fill();
+  ctx.restore();
+}
+
+/* --- title --- */
+SCENES.push({dur:15.0, narr:[
+  {at:0.4, end:7.0, text:'ಪುಟ ಏಳು — ಲೆಕ್ಕಾಚಾರ ಮಾಡಿ. ಗೊತ್ತಿರುವ ವಿನ್ಯಾಸಗಳ ನಡುವಿನ ನಂಟು ಹುಡುಕೋಣ.'},
+  {at:7.3, end:14.3, text:'ಒಂದು ವಿನ್ಯಾಸವನ್ನು ಜೋಡಿಸಿ ಅಥವಾ ಬದಲಿಸಿ — ಹೊಸ ವಿನ್ಯಾಸ ಸಿಗುತ್ತದೆ!'}
+], draw(t){
+  thinkPulse(t);
+  ctx.fillStyle=TEALD; ctx.font=`700 24px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.globalAlpha=easeOut(t/0.6); ctx.fillText('6ನೇ ತರಗತಿ · ಗಣಿತ ಪ್ರಕಾಶ · ಅಧ್ಯಾಯ 1 · ಪುಟ 7',W/2,148);
+  ctx.globalAlpha=easeOut((t-0.5)/0.6); ctx.fillStyle=INK; ctx.font=`700 62px ${F_HEAD}`;
+  ctx.fillText('ವಿನ್ಯಾಸಗಳ ನಡುವಿನ ನಂಟು',W/2,202);
+  ctx.globalAlpha=easeOut((t-1.2)/0.6); ctx.fillStyle=SOFT; ctx.font=`600 26px ${F_BODY}`;
+  ctx.fillText('ಗೊತ್ತಿರುವ ವಿನ್ಯಾಸ ಜೋಡಿಸಿ ಅಥವಾ ಬದಲಿಸಿ → ಹೊಸ ವಿನ್ಯಾಸ',W/2,296);
+  ctx.globalAlpha=1;
+  const a1=popAt(t,1.8);
+  if(a1>0){
+    ctx.globalAlpha=clamp(a1,0,1);
+    dot(W/2-220,440,42,TEAL[0],1,'?');
+    dot(W/2+220,440,42,CORAL[0],1,'?');
+    const pulse=breathe(t,2.4,0.1);
+    ctx.strokeStyle=GOLD[0]; ctx.lineWidth=6*pulse;
+    ctx.beginPath(); ctx.moveTo(W/2-178,440); ctx.lineTo(W/2+178,440); ctx.stroke();
+    ctx.fillStyle=GOLD[0];
+    ctx.beginPath(); ctx.arc(W/2,440,10*pulse,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  const shapes=[[TEAL[1],3],[GOLD[1],4],[CORAL[1],6]];
+  shapes.forEach((s,i)=>{const sc=popAt(t,3.0+i*0.35); if(sc<=0)return;
+    ctx.save(); ctx.translate(W/2-140+i*140,560); ctx.scale(sc,sc);
+    ctx.fillStyle=s[0]; polyPath(0,0,32,s[1]); ctx.fill(); ctx.restore();});
+}});
+
+/* --- Q1: 1+2+1, 1+2+3+2+1 ... = square numbers, via diagonal stripes --- */
+{
+const q='1, 1+2+1, 1+2+3+2+1 … ಇವೆಲ್ಲಾ ಚೌಕ ಸಂಖ್ಯೆ ಕೊಡುತ್ತವೆ — ಚಿತ್ರದಲ್ಲಿ ಏಕೆ ಎಂದು ತೋರಿಸಬಹುದೇ?';
+const hintTxt='4×4 ಚೌಕದ ಚುಕ್ಕೆಗಳನ್ನು ಓರೆ-ಸಾಲುಗಳಲ್ಲಿ (diagonal) ಎಣಿಸೋಣ.';
+const ans='ಉತ್ತರ: ಓರೆ-ಸಾಲುಗಳ ಗಾತ್ರ 1,2,3,4,3,2,1 — ಮೊತ್ತ ಯಾವಾಗಲೂ ಚೌಕ ಸಂಖ್ಯೆ. ಇಲ್ಲಿ 4×4 ಚೌಕದಲ್ಲಿ 16.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+7*0.55+1.0);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 1 · ಓರೆ-ಸಾಲಿನ ಚೌಕ', tagColor:TEAL[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('1, 1+2+1, 1+2+3+2+1 … ಇವೆಲ್ಲಾ ಚೌಕ ಸಂಖ್ಯೆಗಳು — ಏಕೆ?',t);
+  hint('4×4 ಚೌಕದ ಚುಕ್ಕೆಗಳನ್ನು ಓರೆ-ಸಾಲುಗಳಲ್ಲಿ ಎಣಿಸೋಣ.',t);
+  const n=4,r=27,gap=62,x0=W/2-1.5*gap-160,y0=246;
+  for(let row=0;row<n;row++)for(let col=0;col<n;col++){
+    const k=row+col, s=3.4+k*0.55;
+    dot(x0+col*gap, y0+row*gap, r, sh(TEAL,k), popAt(t,s));
+  }
+  const sizes=[1,2,3,4,3,2,1];
+  ctx.font=`700 22px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+  let running=0;
+  sizes.forEach((sz,k)=>{
+    running+=sz;
+    if(t>3.4+k*0.55+0.3){
+      ctx.fillStyle=sh(TEAL,k);
+      ctx.fillText(`ಓರೆ-ಸಾಲು ${k+1}: ${sz}  (ಮೊತ್ತ ${running})`, x0+n*gap+34, y0+k*30);
+    }
+  });
+  if(t>=TL.R) mathStep('1+2+3+4+3+2+1 = 16',t,TL.R,W/2,552,TEAL[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'16','ಓರೆ-ಸಾಲುಗಳ ಗಾತ್ರ 1,2,3,4,3,2,1 ಸೇರಿಸಿದರೆ ಯಾವಾಗಲೂ ಚೌಕ ಸಂಖ್ಯೆ — ಇಲ್ಲಿ 4×4=16.',TEAL[0]);
+}});
+}
+
+/* --- Q2: 1+2+...+99+100+99+...+1 = 100x100, shown via small case + scale-up --- */
+{
+const q='1+2+3+...+99+100+99+...+3+2+1 ರ ಬೆಲೆ ಎಷ್ಟು ಎಂದು ಚಿತ್ರದಿಂದ ಊಹಿಸಬಹುದೇ?';
+const hintTxt='ಚಿಕ್ಕ ಉದಾಹರಣೆ ನೋಡೋಣ: 1+2+3+4+5+4+3+2+1 — ಇದೇ ಪಿರಮಿಡ್ ಆಕಾರ, 100 ರವರೆಗೆ ಬೆಳೆದರೆ?';
+const ans='ಉತ್ತರ ಹತ್ತು ಸಾವಿರ! 5 ಸಾಲಿನ ಪಿರಮಿಡ್ ಮೊತ್ತ 5×5=25 ಆದಂತೆ, 100 ಸಾಲಿನ ಪಿರಮಿಡ್ ಮೊತ್ತ 100×100=10,000.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+9*0.4+1.2);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 2 · ಪಿರಮಿಡ್ ಮೊತ್ತ', tagColor:TEAL[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('1+2+...+99+100+99+...+2+1 ರ ಬೆಲೆ ಎಷ್ಟು?',t);
+  hint('ಚಿಕ್ಕ ಪಿರಮಿಡ್ ನೋಡಿ: 1+2+3+4+5+4+3+2+1',t);
+  const sizes=[1,2,3,4,5,4,3,2,1], unit=17, barH=26, gapY=4, cx=W/2-210, y0=232;
+  let running=0;
+  sizes.forEach((sz,k)=>{
+    const s=3.4+k*0.4, sc=popAt(t,s); if(sc<=0)return;
+    running+=sz;
+    const bw=sz*unit*sc;
+    ctx.fillStyle=sh(GOLD,k);
+    roundRect(cx-bw/2, y0+k*(barH+gapY), bw, barH, 6); ctx.fill();
+    ctx.globalAlpha=clamp(sc,0,1);
+    ctx.fillStyle=SOFT; ctx.font=`700 18px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(`${sz}  (ಮೊತ್ತ ${running})`, cx+bw/2+20, y0+k*(barH+gapY)+barH/2);
+    ctx.globalAlpha=1;
+  });
+  if(t>3.4+9*0.4+0.5){
+    ctx.fillStyle=TEALD; ctx.font=`700 26px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('5 ಸಾಲಿನ ಪಿರಮಿಡ್ = 5×5 = 25',cx,y0+9*(barH+gapY)+18);
+  }
+  const gscale=popAt(t,TL.R-0.2);
+  if(gscale>0){
+    ctx.save(); ctx.globalAlpha=clamp(gscale,0,1);
+    ctx.fillStyle=CORAL[0]; ctx.font=`700 32px ${F_HEAD}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('100 ಸಾಲಿನ ಪಿರಮಿಡ್ ಆದರೂ ಅದೇ ನಿಯಮ!', W/2+230, 300);
+    ctx.font=`700 40px ${F_MONO}`; ctx.fillStyle=TEALD;
+    ctx.fillText('100 × 100 = 10,000', W/2+230, 350);
+    ctx.restore();
+  }
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'10,000','ಪಿರಮಿಡ್ ಮೊತ್ತ ಯಾವಾಗಲೂ ಸಾಲಿನ ಸಂಖ್ಯೆಯ ಚೌಕ: 5 ಸಾಲಿಗೆ 25, 100 ಸಾಲಿಗೆ 100×100=10,000.',TEAL[0]);
+}});
+}
+
+/* --- Q3: all-1s row, two ways to add --- */
+SCENES.push({dur:37.0, tag:'ಪ್ರಶ್ನೆ 3 · ಒಂದೇ 1 ಬೇರೆ ಬೇರೆ ಜೋಡಣೆ', tagColor:GOLD[0], narr:[
+  {at:0.4, end:6.6, text:'ಎಲ್ಲಾ 1 ರ ಸಾಲನ್ನು ಏರಿಕೆ ಕ್ರಮದಲ್ಲಿ ಕೂಡಿದರೆ ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?'},
+  {at:7.0, end:17.2, text:'ಎಡಗಡೆ ನೋಡಿ: 1, ನಂತರ 1+1, ನಂತರ 1+1+1 — ಪ್ರತಿ ಬಾರಿ ಒಂದೇ ಒಂದು ಬ್ಲಾಕ್ ಸೇರುತ್ತದೆ.'},
+  {at:17.6, end:27.3, text:'ಬಲಗಡೆ: ಪ್ರತಿ ಸಾಲಿನಲ್ಲಿ 1 ಗಳು ಏರಿ ಮತ್ತೆ ಇಳಿದರೆ — 1, 1+1, 1+1+1+1 ಆಗುತ್ತದೆ.'},
+  {at:27.7, end:36.2, text:'ಎಡಗಡೆ ಎಣಿಕೆ ಸಂಖ್ಯೆ, ಬಲಗಡೆ ಬೆಸ ಸಂಖ್ಯೆ — ಒಂದೇ ಬ್ಲಾಕ್, ಎರಡು ಬೇರೆ ಶ್ರೇಣಿ!'}
+], draw(t){
+  thinkPulse(t);
+  question('ಒಂದೇ "1" — ಎರಡು ಬೇರೆ ಜೋಡಣೆ, ಎರಡು ಬೇರೆ ಶ್ರೇಣಿ',t);
+  hint('ಎಡ: 1 ಗಳನ್ನು ಏರಿಕೆ ಕ್ರಮದಲ್ಲಿ ಜೋಡಿಸಿ · ಬಲ: 1 ಗಳನ್ನು ಏರಿಕೆ-ಇಳಿಕೆ ಕ್ರಮದಲ್ಲಿ ಜೋಡಿಸಿ',t);
+  const cell=30,gapC=4;
+  // left: straight stack, row n has n unit blocks -> counting numbers
+  const lx=W/2-330;
+  for(let row=1;row<=5;row++){
+    for(let c=0;c<row;c++){
+      const s=3.4+(row-1)*0.9+c*0.15, sc=popAt(t,s); if(sc<=0)continue;
+      ctx.save(); ctx.globalAlpha=clamp(sc,0,1); ctx.fillStyle=sh(TEAL,row-1);
+      roundRect(lx+c*(cell+gapC), 236+(row-1)*40, cell, cell, 6); ctx.fill(); ctx.restore();
+    }
+    if(t>3.4+(row-1)*0.9+row*0.15+0.2){
+      ctx.fillStyle=SOFT; ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText(`${row}`, lx+row*(cell+gapC)+10, 236+(row-1)*40+cell/2);
+    }
+  }
+  ctx.fillStyle=TEALD; ctx.font=`700 22px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  if(t>8.5) ctx.fillText('ಎಣಿಕೆ ಸಂಖ್ಯೆ: 1,2,3,4,5', lx+150, 470);
+  // right: pyramid of 1s, row n has n up + (n-1) down -> odd numbers
+  const rx=W/2+230, sizes=[1,3,5,7,9];
+  let y=236;
+  sizes.forEach((sz,row)=>{
+    for(let c=0;c<sz;c++){
+      const s=17.8+row*1.1+c*0.13, sc=popAt(t,s); if(sc<=0)return;
+      ctx.save(); ctx.globalAlpha=clamp(sc,0,1); ctx.fillStyle=sh(CORAL,row);
+      roundRect(rx-(sz*(cell+gapC))/2+c*(cell+gapC), y, cell, cell, 6); ctx.fill(); ctx.restore();
+    }
+    if(t>17.8+row*1.1+sz*0.13+0.2){
+      ctx.fillStyle=SOFT; ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(`${sz}`, rx, y+cell+14);
+    }
+    y+=cell+34;
+  });
+  ctx.fillStyle='#B5401F'; ctx.font=`700 22px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  if(t>24.0) ctx.fillText('ಬೆಸ ಸಂಖ್ಯೆ: 1,3,5,7,9', rx, 470);
+  answerBanner(t,28.0,'','ಎಣಿಕೆ ಸಂಖ್ಯೆ ಮತ್ತು ಬೆಸ ಸಂಖ್ಯೆ — ಒಂದೇ "1" ಎಂಬ ಬ್ಲಾಕ್, ಜೋಡಣೆ ಬದಲಾದರೆ ಶ್ರೇಣಿ ಬದಲಾಗುತ್ತದೆ.',GOLD[0]);
+}});
+
+/* --- Q4: counting numbers summed -> triangular numbers (dot-triangle) --- */
+{
+const q='ಎಣಿಕೆ ಸಂಖ್ಯೆಗಳನ್ನು ಏರಿಕೆ ಕ್ರಮದಲ್ಲಿ ಕೂಡಿದರೆ ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ? ಚಿತ್ರದಿಂದ ವಿವರಿಸಬಹುದೇ?';
+const hintTxt='1, 1+2, 1+2+3, 1+2+3+4 ಎಣಿಸುತ್ತಾ ಚುಕ್ಕೆಗಳ ತ್ರಿಭುಜ ಕಟ್ಟೋಣ.';
+const ans='ಉತ್ತರ: ಇವು ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳು — 1, 3, 6, 10! ಪ್ರತಿ ಹೊಸ ಸಾಲು ತ್ರಿಭುಜಕ್ಕೆ ಒಂದು ಚುಕ್ಕೆ ಸಾಲು ಸೇರಿಸುತ್ತದೆ.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+4*0.9+1.2);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 4 · ಎಣಿಕೆ ಸಂಖ್ಯೆಗಳ ಮೊತ್ತ', tagColor:GOLD[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('ಎಣಿಕೆ ಸಂಖ್ಯೆಗಳ ಮೊತ್ತ: 1, 1+2, 1+2+3, 1+2+3+4 … ಯಾವ ಶ್ರೇಣಿ?',t);
+  hint('ಚುಕ್ಕೆಗಳ ತ್ರಿಭುಜ ಕಟ್ಟುತ್ತಾ ಸಾಗೋಣ — ಪ್ರತಿ ಸಾಲಿಗೆ ಒಂದು ಚುಕ್ಕೆ ಹೆಚ್ಚು.',t);
+  const r=20,gap=48,topY=246;
+  const rowStart=row=>3.4+row*0.9;
+  for(let row=1;row<=4;row++){
+    const y=topY+(row-1)*46;
+    for(let d=0;d<row;d++){
+      const x=W/2-150-(row-1)*gap/2+d*gap;
+      dot(x,y,r,sh(GOLD,row-1),popAt(t,rowStart(row-1)+d*0.18));
+    }
+  }
+  const sums=[1,3,6,10];
+  ctx.font=`700 24px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+  sums.forEach((s,row)=>{
+    if(t>rowStart(row)+row*0.18+0.3){
+      ctx.fillStyle=sh(GOLD,row);
+      ctx.fillText(`1${row?'+'+Array.from({length:row},(_,i)=>i+2).join('+'):''} = ${s}`,W/2+90,topY+row*46);
+    }
+  });
+  if(t>=TL.R) mathStep('1+2+3+4 = 10',t,TL.R,W/2,540,GOLD[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'1,3,6,10','ಇವು ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳು! ಪ್ರತಿ ಹೊಸ ಸಾಲು ಒಂದು ಚುಕ್ಕೆ ಸಾಲು ಸೇರಿಸುತ್ತದೆ.',GOLD[0]);
+}});
+}
+
+/* --- Q5: consecutive triangular numbers sum -> square (two staircases) --- */
+{
+const q='1+3, 3+6, 6+10, 10+15 — ಎರಡು ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳ ಜೋಡಿ ಮೊತ್ತ ಯಾವ ಶ್ರೇಣಿ ಕೊಡುತ್ತದೆ?';
+const hintTxt='4×4 ಚೌಕವನ್ನು ಎರಡು ಮೆಟ್ಟಿಲು-ತ್ರಿಕೋನಗಳಾಗಿ ಸೀಳಿ ನೋಡೋಣ.';
+const ans='ಉತ್ತರ: ಯಾವಾಗಲೂ ಚೌಕ ಸಂಖ್ಯೆ! ಎರಡು ಸಾಲಿನ ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳು ಜೋಡಿಸಿದರೆ ಒಂದು ಪೂರ್ಣ ಚೌಕ ಆಗುತ್ತದೆ — 6+10=16=4×4.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+4*4*0.16+1.2);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 5 · ಎರಡು ತ್ರಿಕೋನ = ಚೌಕ', tagColor:CORAL[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('1+3, 3+6, 6+10, 10+15 — ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?',t);
+  hint('4×4 ಚೌಕವನ್ನು ಎರಡು ಮೆಟ್ಟಿಲು-ತ್ರಿಕೋನಗಳಾಗಿ ಸೀಳೋಣ.',t);
+  const n=4,cell=52,gapC=5,ox=W/2-(n*(cell+gapC))/2,oy=232;
+  let idx=0;
+  for(let row=0;row<n;row++)for(let col=0;col<n;col++){
+    const lower=col<row; // TEAL = triangular number 6 (below diagonal), CORAL = triangular number 10
+    const s=3.4+idx*0.16; idx++;
+    const sc=popAt(t,s); if(sc<=0)continue;
+    ctx.save(); ctx.globalAlpha=clamp(sc,0,1); ctx.fillStyle= lower? sh(TEAL,row):sh(CORAL,row);
+    roundRect(ox+col*(cell+gapC), oy+row*(cell+gapC), cell, cell, 8); ctx.fill(); ctx.restore();
+  }
+  ctx.font=`700 22px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='top';
+  if(t>3.4+16*0.16+0.3){ ctx.fillStyle=TEAL[0]; ctx.fillText('ತ್ರಿಕೋನ (6 ಚೌಕ)', ox+n*(cell+gapC)+30, oy+20); }
+  if(t>3.4+16*0.16+0.6){ ctx.fillStyle=CORAL[0]; ctx.fillText('ತ್ರಿಕೋನ (10 ಚೌಕ)', ox+n*(cell+gapC)+30, oy+56); }
+  if(t>=TL.R) mathStep('6 + 10 = 16 = 4×4',t,TL.R,W/2,552,CORAL[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'4,9,16,25','ಎರಡು ಸಾಲಿನ ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆ ಜೋಡಿಸಿದರೆ ಯಾವಾಗಲೂ ಚೌಕ ಸಂಖ್ಯೆ — 6+10=16.',CORAL[0]);
+}});
+}
+
+/* --- Q6: powers of 2 summed, +1 -> powers of 2 --- */
+{
+const q='1, 1+2, 1+2+4, 1+2+4+8 ಕೂಡಿ, ಪ್ರತಿ ಮೊತ್ತಕ್ಕೆ 1 ಸೇರಿಸಿ — ಯಾವ ಸಂಖ್ಯೆ ಸಿಗುತ್ತದೆ?';
+const hintTxt='ಪ್ರತಿ ಬಾರಿ ಗಾತ್ರ ಎರಡರಷ್ಟಾಗುವ ಪಟ್ಟಿಗಳನ್ನು ನೋಡಿ — ಮೊತ್ತ ಯಾವಾಗಲೂ ಮುಂದಿನ ಘಾತಕ್ಕಿಂತ ಒಂದು ಕಡಿಮೆ.';
+const ans='ಉತ್ತರ: 2, 4, 8, 16 — 2 ರ ಘಾತಗಳೇ ಸಿಗುತ್ತವೆ! ಮೊತ್ತ ಯಾವಾಗಲೂ ಮುಂದಿನ ಘಾತಕ್ಕಿಂತ 1 ಕಡಿಮೆ, ಆದ್ದರಿಂದ +1 ಸೇರಿಸಿದರೆ ಸರಿಹೊಂದುತ್ತದೆ.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+4*1.1+1.4);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 6 · ಎರಡರ ಘಾತ +1', tagColor:TEAL[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('1, 1+2, 1+2+4, 1+2+4+8 ಕೂಡಿ +1 ಸೇರಿಸಿ — ಏನಾಗುತ್ತದೆ?',t);
+  hint('ಪಟ್ಟಿಗಳ ಗಾತ್ರ ಪ್ರತಿ ಬಾರಿ ಎರಡರಷ್ಟು — ಮೊತ್ತ ಗಮನಿಸಿ.',t);
+  const unit=13, barH=34, gapY=10, x0=W/2-260, y0=252, sizes=[1,2,4,8];
+  let running=0;
+  sizes.forEach((sz,k)=>{
+    const s=3.4+k*1.1, sc=popAt(t,s); if(sc<=0)return;
+    running+=sz;
+    const bw=sz*unit*sc;
+    ctx.fillStyle=sh(TEAL,k); roundRect(x0,y0+k*(barH+gapY),bw,barH,8); ctx.fill();
+    ctx.globalAlpha=clamp(sc,0,1);
+    ctx.fillStyle=SOFT; ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(`+${sz}  →  ಮೊತ್ತ ${running}`, x0+bw+22, y0+k*(barH+gapY)+barH/2);
+    ctx.globalAlpha=1;
+  });
+  if(t>=TL.R){
+    const sc=popAt(t,TL.R,0.5);
+    ctx.save(); ctx.globalAlpha=clamp(sc,0,1);
+    ctx.fillStyle=CORAL[0]; ctx.font=`700 30px ${F_HEAD}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('15 + 1 = 16', W/2, y0+4*(barH+gapY)+26);
+    ctx.font=`600 22px ${F_BODY}`; ctx.fillStyle=SOFT;
+    ctx.fillText('(ಮತ್ತು 1+1=2, 3+1=4, 7+1=8 — ಎಲ್ಲವೂ 2 ರ ಘಾತ)', W/2, y0+4*(barH+gapY)+68);
+    ctx.restore();
+  }
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'2,4,8,16','ಮೊತ್ತ ಯಾವಾಗಲೂ ಮುಂದಿನ ಘಾತಕ್ಕಿಂತ 1 ಕಡಿಮೆ — +1 ಸೇರಿಸಿದರೆ 2,4,8,16 ಸಿಗುತ್ತದೆ.',TEAL[0]);
+}});
+}
+
+/* --- Q7: triangular numbers x6 +1 -> hexagonal ring numbers --- */
+{
+const q='ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳನ್ನು 6 ರಿಂದ ಗುಣಿಸಿ 1 ಸೇರಿಸಿದರೆ ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?';
+const hintTxt='1, 3, 6, 10 ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆಗಳನ್ನು ×6+1 ಮಾಡಿ ಷಡ್ಭುಜ ಉಂಗುರಗಳಾಗಿ ನೋಡೋಣ.';
+const ans='ಉತ್ತರ: 7, 19, 37, 61! ಇವು ನಾವು ಮೊದಲೇ ಕಂಡ ಷಡ್ಭುಜ-ಉಂಗುರ ಸಂಖ್ಯೆಗಳೇ — ಎರಡೂ ಒಂದೇ ಶ್ರೇಣಿ.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+4*1.6+1.2);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 7 · ×6+1 = ಷಡ್ಭುಜ', tagColor:CORAL[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆ × 6, + 1 — ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?',t);
+  hint('1,3,6,10 ಅನ್ನು ×6+1 ಮಾಡಿ, ಷಡ್ಭುಜ ಉಂಗುರವಾಗಿ ನೋಡಿ.',t);
+  const tri=[1,3,6,10], hex=[7,19,37,61];
+  const cx=W/2-190, cy=420, radii=[26,58,90,122];
+  for(let i=radii.length-1;i>=0;i--){
+    const sc=popAt(t,3.4+i*1.6,0.5); if(sc<=0)continue;
+    ctx.save(); ctx.translate(cx,cy); ctx.scale(sc,sc);
+    ctx.fillStyle=sh(CORAL,radii.length-1-i); polyPath(0,0,radii[i],6,0); ctx.fill(); ctx.restore();
+  }
+  ctx.font=`700 24px ${F_MONO}`; ctx.textAlign='left'; ctx.textBaseline='middle';
+  tri.forEach((tv,i)=>{
+    if(t>3.4+i*1.6+0.5){
+      ctx.fillStyle=sh(CORAL,i);
+      ctx.fillText(`${tv} × 6 + 1 = ${hex[i]}`, cx+220, 300+i*46);
+    }
+  });
+  if(t>=TL.R) mathStep('10 × 6 + 1 = 61',t,TL.R,cx+330,500,CORAL[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'7,19,37,61','ಇವು ಷಡ್ಭುಜ-ಉಂಗುರ ಸಂಖ್ಯೆಗಳೇ — ಎರಡು ಬೇರೆ ದಾರಿ, ಒಂದೇ ಶ್ರೇಣಿ!',CORAL[0]);
+}});
+}
+
+/* --- Q8: hexagonal numbers summed -> cube numbers (layered cube) --- */
+{
+const q='ಷಡ್ಭುಜ ಸಂಖ್ಯೆಗಳನ್ನು ಒಂದೊಂದಾಗಿ ಕೂಡೋಣ: 1, 1+7, 1+7+19, 1+7+19+37 — ಯಾವ ಶ್ರೇಣಿ ಸಿಗುತ್ತದೆ?';
+const hintTxt='ಘನದ ಚಿತ್ರ ನೋಡಿ — ಪ್ರತಿ ಷಡ್ಭುಜ ಸಂಖ್ಯೆ ಘನಕ್ಕೆ ಒಂದು ಪದರ ಸೇರಿಸುತ್ತದೆ.';
+const ans='ಉತ್ತರ: 1, 8, 27, 64 — ಇವು ಘನ ಸಂಖ್ಯೆಗಳೇ! ಷಡ್ಭುಜ ಪದರಗಳ ಮೊತ್ತ ಯಾವಾಗಲೂ ಘನ ಸಂಖ್ಯೆ ಕೊಡುತ್ತದೆ.';
+const TL=autoTL({q,hint:hintTxt,ans}, 3.4+4*2.2+1.2);
+SCENES.push({dur:TL.DUR, tag:'ಪ್ರಶ್ನೆ 8 · ಷಡ್ಭುಜ ಪದರ = ಘನ', tagColor:GOLD[0], narr:TL.narr, draw(t){
+  thinkPulse(t);
+  question('ಷಡ್ಭುಜ ಸಂಖ್ಯೆಗಳ ಮೊತ್ತ: 1, 1+7, 1+7+19, 1+7+19+37 — ?',t);
+  hint('ಘನದ ಚಿತ್ರ ನೋಡಿ — ಪ್ರತಿ ಷಡ್ಭುಜ ಸಂಖ್ಯೆ ಒಂದು ಪದರ.',t);
+  const cell=22,gapC=3,baseY=470,xs=[260,540,900];
+  [1,2,3].forEach((n,idx)=>{
+    for(let layer=0;layer<n;layer++){
+      const sc=popAt(t,3.4+idx*2.2+layer*0.55); if(sc<=0)continue;
+      const gw=n*cell+(n-1)*gapC, ox=xs[idx]-gw/2+layer*9, oy=baseY-layer*18;
+      ctx.save(); ctx.globalAlpha=clamp(sc,0,1);
+      for(let r2=0;r2<n;r2++)for(let c=0;c<n;c++){
+        ctx.fillStyle=sh(GOLD,idx+layer);
+        ctx.fillRect(ox+c*(cell+gapC),oy-r2*(cell+gapC)-cell,cell,cell);
+      }
+      ctx.restore();
+    }
+    if(t>3.4+idx*2.2+n*0.55+0.3){
+      ctx.fillStyle=SOFT; ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText(`${n}×${n}×${n} = ${n*n*n}`,xs[idx],baseY+26);
+    }
+  });
+  const hexSums=[1,8,27,64];
+  ctx.font=`700 20px ${F_MONO}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  if(t>3.4+3*2.2+0.8){ ctx.fillStyle=GOLD[0]; ctx.fillText('1, 1+7=8, 1+7+19=27, 1+7+19+37=64', W/2, 210); }
+  if(t>=TL.R) mathStep('1+7+19+37 = 64',t,TL.R,W/2,556,GOLD[0]);
+  guessPrompt(t,TL.G,TL.R);
+  answerBanner(t,TL.B,'1,8,27,64','ಷಡ್ಭುಜ ಪದರಗಳ ಮೊತ್ತ ಯಾವಾಗಲೂ ಘನ ಸಂಖ್ಯೆ — ಘನದ ಚಿತ್ರದಲ್ಲಿ ಪ್ರತಿ ಪದರ ಒಂದು ಷಡ್ಭುಜ ಸಂಖ್ಯೆ.',GOLD[0]);
+}});
+}
+
+/* --- Q9: open — connections map across Table 1's series --- */
+SCENES.push({dur:31.5, tag:'ಪ್ರಶ್ನೆ 9 · ನಂಟುಗಳ ನಕ್ಷೆ', tagColor:TEAL[0], narr:[
+  {at:0.4, end:6.4, text:'ಕೋಷ್ಟಕ 1 ರ ಎಲ್ಲಾ ಶ್ರೇಣಿಗಳ ನಡುವಿನ ನಂಟುಗಳನ್ನು ಒಟ್ಟಿಗೆ ನೋಡೋಣ.'},
+  {at:6.8, end:12.4, text:'ಎಣಿಕೆ ಸಂಖ್ಯೆ ಕೂಡಿಸಿದರೆ ತ್ರಿಕೋನೀಯ, ಬೆಸ ಸಂಖ್ಯೆ ಕೂಡಿಸಿದರೆ ಚೌಕ ಸಂಖ್ಯೆ.'},
+  {at:12.8, end:22.2, text:'ಎರಡು ತ್ರಿಕೋನೀಯ ಸಂಖ್ಯೆ ಜೋಡಿಸಿದರೆ ಚೌಕ, ×6+1 ಮಾಡಿದರೆ ಷಡ್ಭುಜ, ಷಡ್ಭುಜ ಕೂಡಿಸಿದರೆ ಘನ.'},
+  {at:22.6, end:30.8, text:'ಇನ್ನೂ ಎಷ್ಟು ನಂಟುಗಳಿವೆ? ಕೋಷ್ಟಕ 1 ನೋಡುತ್ತಾ ನಿಮ್ಮದೇ ಆದ ನಂಟುಗಳನ್ನು ಹುಡುಕಿ!'}
+], draw(t){
+  thinkPulse(t);
+  question('ಕೋಷ್ಟಕ 1 ರ ಶ್ರೇಣಿಗಳ ನಡುವೆ ಎಷ್ಟು ನಂಟುಗಳು?',t);
+  hint('ಈ ವಿಡಿಯೋದಲ್ಲಿ ಕಂಡುಕೊಂಡ ನಂಟುಗಳ ನಕ್ಷೆ ನೋಡೋಣ.',t);
+  const cx=W/2, cy=430, R=210;
+  const nodes=[['ಎಣಿಕೆ',TEAL[0]],['ಬೆಸ',CORAL[0]],['ತ್ರಿಕೋನೀಯ',GOLD[0]],['ಚೌಕ',TEAL[1]],['ಷಡ್ಭುಜ',CORAL[1]],['ಘನ',GOLD[1]]];
+  const pos=nodes.map((n,i)=>{const a=-Math.PI/2+i*Math.PI*2/nodes.length;
+    return [cx+R*Math.cos(a),cy+R*Math.sin(a)];});
+  const edges=[[0,2,'ಮೊತ್ತ',3.6],[1,3,'ಮೊತ್ತ',4.4],[2,3,'ಜೋಡಿ ಮೊತ್ತ',5.2],[2,4,'×6+1',6.0],[4,5,'ಮೊತ್ತ',6.8]];
+  edges.forEach(([i,j,lbl,s])=>{
+    const sc=popAt(t,s,0.6); if(sc<=0)return;
+    const [x1,y1]=pos[i],[x2,y2]=pos[j];
+    ctx.save(); ctx.globalAlpha=clamp(sc,0,1);
+    ctx.strokeStyle=SOFT; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x1+(x2-x1)*sc,y1+(y2-y1)*sc); ctx.stroke();
+    if(sc>0.7){
+      ctx.fillStyle=INK; ctx.font=`700 16px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(lbl,(x1+x2)/2,(y1+y2)/2-14);
+    }
+    ctx.restore();
+  });
+  nodes.forEach((n,i)=>{
+    const sc=popAt(t,2.4+i*0.22); if(sc<=0)return;
+    const [x,y]=pos[i];
+    const breathe1=1+0.04*Math.sin(t*2.2+i);
+    ctx.save(); ctx.translate(x,y); ctx.scale(sc*breathe1,sc*breathe1);
+    ctx.fillStyle=n[1]; ctx.beginPath(); ctx.arc(0,0,44,0,7); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha=clamp(sc,0,1);
+    ctx.fillStyle=INK; ctx.font=`700 20px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText(n[0],x,y+52);
+    ctx.globalAlpha=1;
+  });
+  const fsc=popAt(t,23.0,0.6);
+  if(fsc>0){
+    ctx.globalAlpha=clamp(fsc,0,1);
+    ctx.fillStyle=TEALD; ctx.font=`700 24px ${F_BODY}`; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('2 ರ ಘಾತ + 1 = 2 ರ ಘಾತ (ತನ್ನೊಳಗೇ ನಂಟು!)', cx, 656);
+    ctx.globalAlpha=1;
+  }
+  if(t>24.0){
+    answerBanner(t,24.0,'','ಸಂಶೋಧಿಸುತ್ತಾ ಇರಿ — ಗಣಿತದಲ್ಲಿ ಇನ್ನೂ ಅನೇಕ ಸುಂದರ ನಂಟುಗಳಿವೆ!',TEAL[0]);
+  }
+}});
+
+/* --- outro --- */
+SCENES.push({dur:15.5, narr:[
+  {at:0.4, end:8.0, text:'ಎಲ್ಲಾ ವಿನ್ಯಾಸಗಳೂ ಒಂದಕ್ಕೊಂದು ಬೆಸೆದುಕೊಂಡಿವೆ — ಒಂದು ಶ್ರೇಣಿ ಇನ್ನೊಂದಕ್ಕೆ ದಾರಿ ತೋರಿಸುತ್ತದೆ.'},
+  {at:8.4, end:15.0, text:'ಪುಟ ಏಳರ ಪ್ರಶ್ನೆಗಳು ಮುಗಿದವು. ಚೆನ್ನಾಗಿ ಕಲಿತಿರಿ!'}
+], draw(t){
+  thinkPulse(t);
+  ctx.globalAlpha=easeOut(t/0.5);
+  ctx.fillStyle=INK; ctx.font=`700 58px ${F_HEAD}`; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText('ವಿನ್ಯಾಸಗಳೆಲ್ಲಾ ಬೆಸೆದುಕೊಂಡಿವೆ.',W/2,220);
+  ctx.globalAlpha=easeOut((t-0.6)/0.5);
+  ctx.fillStyle=SOFT; ctx.font=`600 28px ${F_BODY}`;
+  ctx.fillText('ಗೊತ್ತಿರುವ ವಿನ್ಯಾಸ ಜೋಡಿಸಿ ಅಥವಾ ಬದಲಿಸಿ — ಹೊಸ ವಿನ್ಯಾಸ ಸಿಗುತ್ತದೆ.',W/2,320);
+  ctx.globalAlpha=easeOut((t-1.2)/0.5);
+  ctx.fillText('ಅಧ್ಯಾಯ 1 · ಪುಟ 7 · ಲೆಕ್ಕಾಚಾರ ಮಾಡಿ',W/2,368);
+  ctx.globalAlpha=1;
+  const shapes=[[TEAL[0],3],[GOLD[0],4],[CORAL[0],5],[TEAL[1],6],[GOLD[1],7]];
+  shapes.forEach((s,i)=>{const sc=popAt(t,1.8+i*0.3); if(sc<=0)return;
+    ctx.save(); ctx.translate(W/2-240+i*120,500); ctx.scale(sc,sc);
+    ctx.fillStyle=s[0]; polyPath(0,0,36,s[1]); ctx.fill(); ctx.restore();});
+}});
+
+/* ================================ driver ================================ */
+const OFFSETS=[]; let acc=0;
+for(const s of SCENES){OFFSETS.push(acc); acc+=s.dur;}
+const TOTAL=acc;
+window.totalDuration=()=>TOTAL;
+window.sceneSchedule=()=>SCENES.map((s,i)=>({start:OFFSETS[i],dur:s.dur}));
+window.chimeTimes=()=>{
+  const times=[];
+  SCENES.forEach((s,i)=>{
+    if(!s.narr) return;
+    // reveal chime = start of the answer narration line (index 3 for question scenes)
+    const ans=s.narr.find(n=>n.text.startsWith('ಉತ್ತರ')||n.text.startsWith('ಯಾವಾಗಲೂ'));
+    if(ans) times.push(+(OFFSETS[i]+ans.at-0.3).toFixed(2));
+  });
+  return times;
+};
+/* narration lines with absolute times — the single source of truth for the SRT */
+window.narration=()=>{
+  const out=[];
+  SCENES.forEach((s,i)=>{
+    (s.narr||[]).forEach(n=>{
+      out.push({start:+(OFFSETS[i]+n.at).toFixed(2), end:+(OFFSETS[i]+Math.min(n.end,s.dur)).toFixed(2), text:n.text});
+    });
+  });
+  return out;
+};
+window.renderFrame=function(t){
+  bg();
+  let idx=SCENES.length-1;
+  for(let i=0;i<SCENES.length;i++){ if(t<OFFSETS[i]+SCENES[i].dur){idx=i;break;} }
+  const s=SCENES[idx], local=t-OFFSETS[idx];
+  if(s.tag) tag(s.tag,s.tagColor);
+  s.draw(local);
+  if(idx>0&&local<0.35){ctx.fillStyle=PAPER;ctx.globalAlpha=1-local/0.35;ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;}
+  return idx;
+};
+renderFrame(0);
+</script>
+</body></html>
