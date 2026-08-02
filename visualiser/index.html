@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Text-to-canvas visualiser</title>
+<style>
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #05070c;
+    color: #e6e8ee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 24px;
+  }
+  #controls {
+    display: flex;
+    gap: 8px;
+    width: 1000px;
+    max-width: 100%;
+  }
+  textarea {
+    flex: 1;
+    resize: vertical;
+    min-height: 48px;
+    font: inherit;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #10131a;
+    color: inherit;
+  }
+  button {
+    padding: 0 20px;
+    border: none;
+    border-radius: 8px;
+    background: #4f7cff;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:disabled { background: #333; cursor: default; }
+  canvas {
+    border-radius: 12px;
+    border: 1px solid #222;
+    max-width: 100%;
+    height: auto;
+  }
+  #status { min-height: 20px; font-size: 14px; color: #9aa; }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <textarea id="prompt" placeholder="e.g. why does a triangle's angles always add up to 180 degrees?"></textarea>
+    <button id="go">Visualize</button>
+  </div>
+  <div id="status"></div>
+  <canvas id="stage" width="1000" height="600"></canvas>
+
+  <script src="/static/renderer.js"></script>
+  <script>
+    const promptEl = document.getElementById('prompt');
+    const goEl = document.getElementById('go');
+    const statusEl = document.getElementById('status');
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+
+    async function visualize() {
+      const text = promptEl.value.trim();
+      if (!text) return;
+      goEl.disabled = true;
+      statusEl.textContent = 'thinking...';
+      try {
+        const res = await fetch('/api/visualize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'request failed');
+        statusEl.textContent = '';
+        window.startScene(ctx, canvas, data);
+      } catch (err) {
+        statusEl.textContent = 'error: ' + err.message;
+      } finally {
+        goEl.disabled = false;
+      }
+    }
+
+    goEl.addEventListener('click', visualize);
+    promptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) visualize();
+    });
+  </script>
+</body>
+</html>

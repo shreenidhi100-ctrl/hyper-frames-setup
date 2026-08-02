@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""
+Text-to-canvas visualiser prototype.
+
+Flask app with one endpoint: POST /api/visualize {text} -> a scene spec JSON
+that static/renderer.js animates live on an HTML canvas. No audio, no
+pre-rendering, no video export — this is the "explain this on the spot"
+prototype, not the Ganita video pipeline.
+
+Requires ANTHROPIC_API_KEY (or an `ant auth login` profile) in the
+environment the server runs in.
+
+Run:
+    pip install -r requirements.txt
+    python3 server.py
+    open http://localhost:5000
+"""
+
+import json
+from pathlib import Path
+
+import anthropic
+from flask import Flask, jsonify, request, send_from_directory
+
+HERE = Path(__file__).parent.resolve()
+
+app = Flask(__name__, static_folder=str(HERE / "static"))
+client = anthropic.Anthropic()
+
+MODEL = "claude-opus-5"
+
+CANVAS_W = 1000
+CANVAS_H = 600
+
+SCENE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "duration": {"type": "number", "description": "total loop length in seconds, 10-30"},
+        "background": {"type": "string", "description": "hex color, e.g. #0b0f19"},
+        "elements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "type": {"type": "string", "enum": ["text", "circle", "rect", "line", "arrow", "polygon"]},
+                    "props": {
+                        "type": "object",
+                        "properties": {
+                            "x": {"type": "number"},
+                            "y": {"type": "number"},
+                            "x2": {"type": "number"},
+                            "y2": {"type": "number"},
+                            "w": {"type": "number"},
+                            "h": {"type": "number"},
+                            "r": {"type": "number"},
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+                                    "required": ["x", "y"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "content": {"type": "string"},
+                            "fontSize": {"type": "number"},
+                            "align": {"type": "string", "enum": ["left", "center", "right"]},
+                            "color": {"type": "string"},
+                            "fill": {"type": "boolean"},
+                        },
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                    "enter": {
+                        "type": "object",
+                        "properties": {
+                            "at": {"type": "number"},
+                            "duration": {"type": "number"},
+                            "style": {"type": "string", "enum": ["fade", "slide", "draw", "pop"]},
+                        },
+                        "required": ["at", "duration", "style"],
+                        "additionalProperties": False,
+                    },
+                    "loop": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "enum": ["pulse", "none"]},
+                            "from": {"type": "number"},
+                        },
+                        "required": ["type"],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["id", "type", "props", "enter"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["duration", "background", "elements"],
+    "additionalProperties": False,
+}
+
+SYSTEM_PROMPT = f"""You turn a short text prompt into a looping animated canvas \
+diagram that explains the idea to a curious kid.
+
+Canvas is {CANVAS_W}x{CANVAS_H}, origin top-left, y grows downward.
+
+Rules:
+- 4-10 elements. Always include at least one text title near the top.
+- Stagger every element's `enter.at` — nothing enters at the same instant as \
+another element unless they are visually one group.
+- Use `enter.style: "draw"` for lines/arrows/polygons that represent a \
+diagram being built, not "fade" — the viewer should watch it construct.
+- Use `enter.style: "pop"` for reveals/answers/key numbers.
+- Exactly one element should carry a `loop: {{"type": "pulse", "from": <time \
+its entrance finishes>}}` so the scene is never fully still after it settles \
+— pick the single most important focus element (the answer, or the moving \
+part of the diagram).
+- All other elements: `loop: {{"type": "none"}}` or omit loop.
+- `duration` is the full loop length in seconds (10-30); after the last \
+element's entrance finishes, leave a few seconds before it loops back to 0.
+- Colors: pick a small cohesive palette against `background`. Don't use pure \
+black/white only.
+- Keep coordinates inside the canvas bounds with margin.
+"""
+
+
+@app.route("/")
+def index():
+    return send_from_directory(HERE, "index.html")
+
+
+@app.route("/api/visualize", methods=["POST"])
+def visualize():
+    body = request.get_json(force=True, silent=True) or {}
+    text = (body.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=8000,
+        system=SYSTEM_PROMPT,
+        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCENE_SCHEMA}},
+        messages=[{"role": "user", "content": text}],
+    )
+
+    if response.stop_reason == "refusal":
+        return jsonify({"error": "the model declined to visualize this prompt"}), 422
+
+    scene_text = next(b.text for b in response.content if b.type == "text")
+    scene = json.loads(scene_text)
+    return jsonify(scene)
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
