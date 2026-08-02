@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <title>Textbook visualiser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
 <style>
   body {
     margin: 0;
@@ -43,8 +46,8 @@
   }
   button:disabled { background: #333; cursor: default; }
   canvas {
-    border-radius: 12px;
-    border: 1px solid #222;
+    border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     max-width: 100%;
     height: auto;
   }
@@ -80,6 +83,7 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'request failed');
+        await document.fonts.load('28px "Patrick Hand"');
         statusEl.textContent = '';
         window.startScene(ctx, canvas, data);
       } catch (err) {

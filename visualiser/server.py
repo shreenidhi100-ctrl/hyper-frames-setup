@@ -147,11 +147,15 @@ def visualize():
     if not text:
         return jsonify({"error": "text is required"}), 400
 
+    # This is mechanical layout work (passage -> shape positions), not deep
+    # reasoning, so thinking stays off and effort stays low for latency —
+    # the schema already constrains the output shape.
     response = client.messages.create(
         model=MODEL,
-        max_tokens=8000,
-        system=SYSTEM_PROMPT,
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCENE_SCHEMA}},
+        max_tokens=4000,
+        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        thinking={"type": "disabled"},
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCENE_SCHEMA}},
         messages=[{"role": "user", "content": text}],
     )
 
