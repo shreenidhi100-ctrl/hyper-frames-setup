@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Text-to-canvas visualiser prototype.
+Textbook visualiser prototype.
+
+A child pastes in the passage they're currently reading (any subject) and
+gets it turned into a looping animated canvas diagram of the underlying
+concept — a reading companion, not a general chatbot prompt box.
 
 Flask app with one endpoint: POST /api/visualize {text} -> a scene spec JSON
 that static/renderer.js animates live on an HTML canvas. No audio, no
-pre-rendering, no video export — this is the "explain this on the spot"
-prototype, not the Ganita video pipeline.
+pre-rendering, no video export, no OCR (text is pasted, not photographed) —
+and this is a standalone prototype, not part of the Ganita video pipeline.
 
 Requires ANTHROPIC_API_KEY (or an `ant auth login` profile) in the
 environment the server runs in.
@@ -101,8 +105,13 @@ SCENE_SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM_PROMPT = f"""You turn a short text prompt into a looping animated canvas \
-diagram that explains the idea to a curious kid.
+SYSTEM_PROMPT = f"""A child is reading a textbook and pasted in a passage \
+they want visualized. The passage may be several sentences of prose from any \
+subject (math, science, history, language, ...) — it is not a question \
+addressed to you. First identify the single core concept the passage is \
+teaching, then turn *that concept* into a looping animated canvas diagram. \
+Do not just re-render the passage's sentences as on-screen text; draw the \
+thing the passage describes.
 
 Canvas is {CANVAS_W}x{CANVAS_H}, origin top-left, y grows downward.
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Text-to-canvas visualiser</title>
+<title>Textbook visualiser</title>
 <style>
   body {
     margin: 0;
@@ -24,7 +24,7 @@
   textarea {
     flex: 1;
     resize: vertical;
-    min-height: 48px;
+    min-height: 96px;
     font: inherit;
     padding: 10px;
     border-radius: 8px;
@@ -53,7 +53,7 @@
 </head>
 <body>
   <div id="controls">
-    <textarea id="prompt" placeholder="e.g. why does a triangle's angles always add up to 180 degrees?"></textarea>
+    <textarea id="prompt" placeholder="Paste the paragraph you're reading from your textbook..."></textarea>
     <button id="go">Visualize</button>
   </div>
   <div id="status"></div>
