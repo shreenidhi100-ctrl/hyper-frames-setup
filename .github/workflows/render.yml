@@ -17,8 +17,20 @@ on:
         default: "true"
 
 jobs:
-  render:
+  hosted-runner-probe:
     runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 2
+    outputs:
+      available: ${{ steps.ready.outputs.available }}
+    steps:
+      - id: ready
+        run: echo "available=true" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: hosted-runner-probe
+    if: ${{ always() }}
+    runs-on: ${{ needs.hosted-runner-probe.outputs.available == 'true' && 'ubuntu-latest' || fromJSON(vars.SELF_HOSTED_LABELS || '["self-hosted"]') }}
     steps:
       - uses: actions/checkout@v4
 
